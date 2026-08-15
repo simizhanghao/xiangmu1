@@ -108,6 +108,12 @@ def main() -> None:
     args = parser.parse_args()
 
     project = Path(__file__).resolve().parents[1]
+    sealed_existing = project / f"data/sealed/hotpotqa_test{args.size}.jsonl"
+    if sealed_existing.is_file():
+        raise SystemExit(
+            "REFUSE: sealed test already frozen at "
+            f"{sealed_existing}. Do not rerun this script."
+        )
     repo = project.parents[1]
     data_root = repo / "data"
     pool = data_root / "sft/source/hotpotqa_distractor_train_pool_n8000.jsonl"

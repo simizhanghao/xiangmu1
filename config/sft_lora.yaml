@@ -1,5 +1,6 @@
 ### Frozen SFT: Qwen3-8B + existing coldstart_v1.
-### Effective global batch = 4 × 4 accumulation × 4 GPUs = 64.
+### Fast 4×80G LoRA: 16 × 1 accum × 4 GPUs = global batch 64 (unchanged).
+### ZeRO-2 is enough for 8B LoRA and cheaper than ZeRO-3.
 
 ### model
 model_name_or_path: /data1/hcc/deepresearch/Dee/model
@@ -13,7 +14,7 @@ finetuning_type: lora
 lora_rank: 32
 lora_alpha: 64
 lora_target: all
-deepspeed: /data1/hcc/LlamaFactory/examples/deepspeed/ds_z3_config.json
+deepspeed: /data1/hcc/LlamaFactory/examples/deepspeed/ds_z2_config.json
 
 ### dataset
 dataset: eca_qwen3_8b_coldstart_train
@@ -23,7 +24,7 @@ enable_thinking: false
 cutoff_len: 4096
 overwrite_cache: true
 preprocessing_num_workers: 16
-dataloader_num_workers: 4
+dataloader_num_workers: 8
 
 ### output
 output_dir: /data1/hcc/deepresearch/Dee/artifacts/sft_adapter
@@ -36,8 +37,9 @@ save_only_model: false
 report_to: tensorboard
 
 ### train
-per_device_train_batch_size: 4
-gradient_accumulation_steps: 4
+per_device_train_batch_size: 16
+gradient_accumulation_steps: 1
+optim: adamw_torch_fused
 learning_rate: 1.0e-4
 num_train_epochs: 2.0
 lr_scheduler_type: cosine
@@ -49,6 +51,6 @@ seed: 42
 resume_from_checkpoint: null
 
 ### eval
-per_device_eval_batch_size: 1
+per_device_eval_batch_size: 4
 eval_strategy: steps
-eval_steps: 50
+eval_steps: 100

@@ -14,10 +14,97 @@ done
 require_file "$PROJECT_ROOT/results/experiment_contract.json"
 require_file "$PROJECT_ROOT/results/sealed_test_manifest.json"
 require_file "$PROJECT_ROOT/results/rl_parquet_compat_manifest.json"
+
+echo "[gate0 8b contract]"
+[[ "$PROJECT_ROOT" == /data1/hcc/deepresearch/Dee ]]
+[[ "$MODEL_ID" == Qwen/Qwen3-8B ]]
+[[ "$BASE_MODEL" == /data1/hcc/deepresearch/Dee/model ]]
+[[ "$SFT_MERGED" == /data1/hcc/deepresearch/Dee/artifacts/models/qwen3_8b_sft_merged ]]
+[[ "${GRPO_FSDP_OFFLOAD}" == 0 ]]
+[[ "${GRPO_MAX_MODEL_LEN}" == 8192 ]]
+[[ "${GRPO_PP_SIZE}" == 4 ]]
+grep -q 'template: qwen3_nothink' "$PROJECT_ROOT/config/sft_lora.yaml"
+grep -q 'enable_thinking: false' "$PROJECT_ROOT/config/sft_lora.yaml"
+grep -q 'segment {200|400|600|800}' "$PROJECT_ROOT/scripts/07_run_evidence_grpo.sh"
+stale=$(grep -R --include='*.sh' --include='*.py' --include='*.yaml' --include='*.env' \
+  --exclude='00_preflight.sh' -n '/data1/hcc/deepresearch/Qwen3_30B' \
+  "$PROJECT_ROOT/config" "$PROJECT_ROOT/scripts" "$PROJECT_ROOT/src" || true)
+if [[ -n "$stale" ]]; then
+  printf '%s\n' "$stale"
+  echo "ERROR live Qwen3_30B path in runtime config/scripts/src" >&2
+  exit 1
+fi
+python3 - "$PROJECT_ROOT" "$BASE_MODEL" "$MODEL_ID" <<'PY'
+import hashlib, json, sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+base = Path(sys.argv[2])
+model_id = sys.argv[3]
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+cfg = json.loads((base / "config.json").read_text())
+assert cfg.get("model_type") == "qwen3", cfg.get("model_type")
+assert cfg.get("architectures") == ["Qwen3ForCausalLM"], cfg.get("architectures")
+assert "moe" not in cfg.get("model_type", "")
+
+replacements = (
+    ("/data1/hcc/deepresearch/Qwen3_30B/xiangmu", str(root)),
+    ("/data1/hcc/deepresearch/Qwen3_30B/model", str(base)),
+)
+for rel in (
+    "results/experiment_contract.json",
+    "results/sealed_test_manifest.json",
+    "results/rl_parquet_compat_manifest.json",
+):
+    path = root / rel
+    text = path.read_text()
+    for old, new in replacements:
+        text = text.replace(old, new)
+    if "Qwen3_30B" in text:
+        raise SystemExit(f"ERROR stale Qwen3_30B path remains in {path}")
+    path.write_text(text)
+
+contract_path = root / "results/experiment_contract.json"
+contract = json.loads(contract_path.read_text())
+contract["model"] = {
+    "path": str(base),
+    "model_id": model_id,
+    "model_type": cfg["model_type"],
+    "architectures": cfg.get("architectures"),
+    "config_sha256": sha256_file(base / "config.json"),
+    "tokenizer_sha256": sha256_file(base / "tokenizer.json"),
+}
+contract_path.write_text(json.dumps(contract, ensure_ascii=False, indent=2) + "\n")
+
+gate = {
+    "gate": "GATE0_CONTRACT_PASS",
+    "project_root": str(root),
+    "model_id": model_id,
+    "base_model": str(base),
+    "model_type": cfg["model_type"],
+    "thinking": "disabled",
+    "grpo_fsdp_offload": False,
+    "grpo_max_model_len": 8192,
+    "grpo_pp_size": 4,
+    "milestones": [200, 400, 600, 800],
+    "sealed_test_untouched": True,
+}
+(root / "results/gate0_contract.json").write_text(json.dumps(gate, indent=2) + "\n")
+print("GATE0_CONTRACT_PASS")
+print(json.dumps(gate, indent=2))
+PY
 grep -q 'EXPERIMENT_CONTRACT_PASS' "$PROJECT_ROOT/results/experiment_contract.json"
 grep -q 'SEALED_TEST_FREEZE_PASS' "$PROJECT_ROOT/results/sealed_test_manifest.json"
 grep -q 'RL_PARQUET_COMPAT_PASS' "$PROJECT_ROOT/results/rl_parquet_compat_manifest.json"
-echo "OK experiment contract, sealed-test manifest, and RL Parquet compatibility gate"
+grep -q 'GATE0_CONTRACT_PASS' "$PROJECT_ROOT/results/gate0_contract.json"
+echo "OK experiment contract, sealed-test manifest, RL Parquet compatibility, and Gate 0"
 
 echo "[data hashes]"
 sha256sum \

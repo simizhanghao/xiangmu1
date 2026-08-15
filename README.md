@@ -1,5 +1,7 @@
 # Evidence-Aware Deep Research Agent — Qwen3-8B
 
+冻结总计划（唯一执行线）：[PLAN.md](PLAN.md)。
+
 ## 项目目标
 
 在不更换数据、retriever、reward 与 Agent protocol 的前提下，把已验证的 Qwen2.5-3B 系统升级到 [`Qwen/Qwen3-8B`](https://huggingface.co/Qwen/Qwen3-8B) dense，交付一个可在 4×A100-80G 上完整跑通 full-parameter Evidence-GRPO 的最终 DeepResearch Agent。
@@ -21,8 +23,10 @@ Qwen3-8B (dense, non-thinking)
 ## 已冻结的实验定义
 
 - Backbone：`Qwen/Qwen3-8B`，`qwen3_nothink`，`enable_thinking=false`。
-- SFT：原 ShareGPT coldstart_v1，2 epochs，LoRA rank 32，effective global batch 64。
-- RL：Evidence GRPO，`lambda_e=0.5`、LR `1e-6`、`temperature=0.9`、`top_p=0.95`、`n=4`。
+- SFT：原 ShareGPT coldstart_v1（4550），2 epochs，LoRA rank 32，effective global batch 64。
+- RL smoke：当前 128/16 parquet **只用于 Gate 4/5**，不是最终训练集。
+- 正式 GRPO：Gate 5.5 构建约 **5,000** HotpotQA questions；fast-dev 200 + formal-dev 1000。
+- RL 算法：Evidence GRPO，`lambda_e=0.5`、LR `1e-6`、`temperature=0.9`、`top_p=0.95`、`n=4`。
 - Environment：Candidate-BM25 top-5、同一 `EcaSearchAgentLoop`、Exact VeXact。
 - Memory：actor param/optimizer offload = false；rollout PP=4；`max_model_len=8192`。
 - Budget：正式终点 200/400/600/800；1000 不是 KPI。
@@ -54,9 +58,10 @@ Qwen3-8B (dense, non-thinking)
   → merge BF16
   → SFT frozen-dev
   → Candidate-BM25
-  → 1-step Exact GRPO smoke（必须 GRPO_SEGMENT_PASS）
-  → 20-step throughput gate
-  → 200 → 400 → 600 → 800 + frozen-dev
+  → 1-step Exact GRPO smoke on 128（必须 GRPO_SEGMENT_PASS）
+  → 20-step throughput on 128
+  → Gate 5.5 构建正式 HotpotQA-5K
+  → 200 → 400 → 600 → 800 + fast-dev 200 / formal-dev 1000
   → 唯一 best 后再开 sealed Test
 ```
 
