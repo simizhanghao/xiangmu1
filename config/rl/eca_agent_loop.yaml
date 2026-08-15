@@ -1,0 +1,3 @@
+# Custom veRL AgentLoop registry entry (loaded via rollout.agent.agent_loop_config_path)
+- name: eca_search_agent
+  _target_: src.rl.eca_search_agent_loop.EcaSearchAgentLoop

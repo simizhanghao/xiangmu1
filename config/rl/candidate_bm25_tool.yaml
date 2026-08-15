@@ -1,0 +1,25 @@
+# veRL native BaseTool config — Candidate-BM25 (sample_id-scoped)
+tools:
+  - class_name: "src.rl.candidate_bm25_tool.CandidateBM25Tool"
+    config:
+      type: native
+      retrieval_url: "http://127.0.0.1:8001/retrieve"
+      default_topk: 5
+      timeout_s: 30.0
+    tool_schema:
+      type: "function"
+      function:
+        name: "search"
+        description: >
+          Search candidate documents for the current HotpotQA sample using BM25.
+          The tool is already bound to this trajectory's sample_id; only pass the query.
+        parameters:
+          type: "object"
+          properties:
+            query:
+              type: "string"
+              description: "Search query emitted by the policy inside <search>...</search>."
+            topk:
+              type: "integer"
+              description: "Optional top-k override (default 5)."
+          required: ["query"]
