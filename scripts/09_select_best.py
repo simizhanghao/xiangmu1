@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 
 
-STEPS = (200, 400, 600, 800, 1000)
+STEPS = (200, 400, 600, 800)
 
 
 def main() -> None:

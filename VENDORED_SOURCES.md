@@ -19,4 +19,4 @@
 
 没有复制 CUR、DSSR、Root Pivot、Step Gate、Boundary reward、optimizer sweep 或对应控制器。`launch_grpo.py` 是新的极简入口，明确不加载父项目的研究型 trainer monkeypatch。
 
-`eca_search_agent_loop.py` 目前保留了已验证快照中的 dormant audit hooks，因为直接删改会改变 Exact 验证对象；最终项目运行没有设置这些 audit/CUR 环境变量，因此它们不生效。待 30B compatibility smoke 通过后，可另做行为等价的精简，不在 smoke 之前改动关键 AgentLoop。
+`eca_search_agent_loop.py` 目前保留了已验证快照中的 dormant audit hooks，因为直接删改会改变 Exact 验证对象；最终项目运行没有设置这些 audit/CUR 环境变量，因此它们不生效。待 8B compatibility smoke 通过后，可另做行为等价的精简，不在 smoke 之前改动关键 AgentLoop。

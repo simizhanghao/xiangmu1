@@ -56,6 +56,7 @@ require_file "$BASE_MODEL/config.json"
 import json, pathlib, sys
 p = pathlib.Path(sys.argv[1])
 c = json.loads((p / "config.json").read_text())
-assert c.get("model_type") == "qwen3_moe", c.get("model_type")
+assert c.get("model_type") == "qwen3", c.get("model_type")
+assert c.get("model_type") != "qwen3_moe"
 print("MODEL_DOWNLOAD_PASS", p, "model_type=", c["model_type"])
 PY

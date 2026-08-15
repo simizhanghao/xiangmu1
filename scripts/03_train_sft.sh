@@ -2,7 +2,7 @@
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
 require_file "$BASE_MODEL/config.json"
-require_file "$LLAMAFACTORY_ROOT/data/eca_qwen3_30b_coldstart_train.jsonl"
+require_file "$LLAMAFACTORY_ROOT/data/eca_qwen3_8b_coldstart_train.jsonl"
 [[ -x "$LLAMAFACTORY_PYTHON" ]] || {
   echo "ERROR SFT environment is missing: $LLAMAFACTORY_PYTHON" >&2
   echo "Run scripts/00_setup_sft_env.sh first." >&2

@@ -9,22 +9,22 @@ require_file "$src/eca_coldstart_v1_dev.jsonl"
 require_file "$src/eca_coldstart_v1_smoke.jsonl"
 require_file "$lf_data/dataset_info.json"
 
-ln -sfn "$src/eca_coldstart_v1_train.jsonl" "$lf_data/eca_qwen3_30b_coldstart_train.jsonl"
-ln -sfn "$src/eca_coldstart_v1_dev.jsonl" "$lf_data/eca_qwen3_30b_coldstart_dev.jsonl"
-ln -sfn "$src/eca_coldstart_v1_smoke.jsonl" "$lf_data/eca_qwen3_30b_coldstart_smoke.jsonl"
+ln -sfn "$src/eca_coldstart_v1_train.jsonl" "$lf_data/eca_qwen3_8b_coldstart_train.jsonl"
+ln -sfn "$src/eca_coldstart_v1_dev.jsonl" "$lf_data/eca_qwen3_8b_coldstart_dev.jsonl"
+ln -sfn "$src/eca_coldstart_v1_smoke.jsonl" "$lf_data/eca_qwen3_8b_coldstart_smoke.jsonl"
 
 "$PYTHON_BIN" - "$lf_data/dataset_info.json" <<'PY'
 import json, pathlib, sys
 p = pathlib.Path(sys.argv[1])
 obj = json.loads(p.read_text())
 for split in ("train", "dev", "smoke"):
-    obj[f"eca_qwen3_30b_coldstart_{split}"] = {
-        "file_name": f"eca_qwen3_30b_coldstart_{split}.jsonl",
+    obj[f"eca_qwen3_8b_coldstart_{split}"] = {
+        "file_name": f"eca_qwen3_8b_coldstart_{split}.jsonl",
         "formatting": "sharegpt",
         "columns": {"messages": "conversations", "system": "system"},
     }
 p.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n")
-print("registered", ",".join(f"eca_qwen3_30b_coldstart_{s}" for s in ("train", "dev", "smoke")))
+print("registered", ",".join(f"eca_qwen3_8b_coldstart_{s}" for s in ("train", "dev", "smoke")))
 PY
 
 "$PYTHON_BIN" - "$src" <<'PY'

@@ -2,10 +2,10 @@
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
 
-session=q30_grpo_full
+session=q8_grpo_full
 port=${TENSORBOARD_PORT:-6007}
 log="$PROJECT_ROOT/logs/grpo_full_pipeline_$(date +%Y%m%d_%H%M%S).log"
-tb_dir="$PROJECT_ROOT/tensorboard/qwen3_30b_evidence_1000"
+tb_dir="$PROJECT_ROOT/tensorboard/qwen3_8b_evidence_800"
 
 command -v tmux >/dev/null
 if tmux has-session -t "$session" 2>/dev/null; then

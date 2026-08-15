@@ -17,11 +17,11 @@ case "$mode" in
     lr=1e-8
     save_freq=1
     resume_mode=disable
-    experiment=qwen3_30b_evidence_smoke
+    experiment=qwen3_8b_evidence_smoke
     ;;
   segment)
-    case "$target_step" in 200|400|600|800|1000) ;; *)
-      echo "usage: $0 segment {200|400|600|800|1000}" >&2; exit 2;; esac
+    case "$target_step" in 200|400|600|800) ;; *)
+      echo "usage: $0 segment {200|400|600|800}" >&2; exit 2;; esac
     ckpt_root="$RL_CKPT_ROOT"
     batch="$GRPO_BATCH"
     n="$GRPO_N"
@@ -29,10 +29,10 @@ case "$mode" in
     lr=1e-6
     save_freq=200
     resume_mode=auto
-    experiment=qwen3_30b_evidence_1000
+    experiment=qwen3_8b_evidence_800
     ;;
   *)
-    echo "usage: $0 smoke | segment {200|400|600|800|1000}" >&2
+    echo "usage: $0 smoke | segment {200|400|600|800}" >&2
     exit 2
     ;;
 esac
@@ -78,7 +78,7 @@ export VEOMNI_USE_LIGER_KERNEL=0
 export TOKENIZERS_PARALLELISM=false
 export PYTHONUNBUFFERED=1
 
-case "${GRPO_FSDP_OFFLOAD:-1}" in
+case "${GRPO_FSDP_OFFLOAD:-0}" in
   1|true|True|TRUE) fsdp_offload=True ;;
   *) fsdp_offload=False ;;
 esac
@@ -162,7 +162,7 @@ env -u LD_LIBRARY_PATH CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES" \
   reward.custom_reward_function.name=compute_score \
   trainer.nnodes=1 \
   trainer.n_gpus_per_node="$N_GPUS" \
-  trainer.total_epochs=1000 \
+  trainer.total_epochs=800 \
   trainer.total_training_steps="$target_step" \
   trainer.val_before_train=False \
   trainer.save_freq="$save_freq" \
@@ -170,7 +170,7 @@ env -u LD_LIBRARY_PATH CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES" \
   trainer.resume_mode="$resume_mode" \
   trainer.max_actor_ckpt_to_keep=1 \
   'trainer.logger=[console,tensorboard]' \
-  trainer.project_name=eca_qwen3_30b_final \
+  trainer.project_name=eca_qwen3_8b_final \
   trainer.experiment_name="$experiment" \
   trainer.default_local_dir="$ckpt_root" \
   2>&1 | tee "$log"

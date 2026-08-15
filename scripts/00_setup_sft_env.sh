@@ -66,7 +66,7 @@ versions = {
 }
 assert versions["torch"] == "2.10.0+cu129", versions
 assert versions["cuda_available"], versions
-out = Path("/data1/hcc/deepresearch/Qwen3_30B/xiangmu/results/sft_env_versions.json")
+out = Path("/data1/hcc/deepresearch/Dee/results/sft_env_versions.json")
 out.write_text(json.dumps(versions, indent=2) + "\n")
 print(json.dumps(versions, indent=2))
 print("SFT_ENV_PASS")

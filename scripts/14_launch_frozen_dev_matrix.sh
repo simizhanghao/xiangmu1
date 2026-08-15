@@ -2,8 +2,8 @@
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
 
-base_model="/data1/hcc/deepresearch/Qwen3_30B/model"
-sft_model="$PROJECT_ROOT/artifacts/models/qwen3_30b_sft_merged"
+base_model="$BASE_MODEL"
+sft_model="$SFT_MERGED"
 
 require_file "$base_model/config.json"
 require_file "$sft_model/config.json"
@@ -14,10 +14,10 @@ command -v tmux >/dev/null
 command -v nvidia-smi >/dev/null
 
 sessions=(
-  q30_eval_base_direct
-  q30_eval_base_rag
-  q30_eval_sft_agent
-  q30_eval_oracle
+  q8_eval_base_direct
+  q8_eval_base_rag
+  q8_eval_sft_agent
+  q8_eval_oracle
 )
 tags=(base_direct base_rag sft_agent oracle_sft)
 modes=(direct rag agent oracle)
@@ -61,11 +61,11 @@ done
 
 cat <<'EOF'
 FROZEN_DEV_MATRIX_LAUNCH_PASS
-GPU 0  q30_eval_base_direct  base_direct / direct
-GPU 1  q30_eval_base_rag     base_rag / one-shot Candidate-BM25
-GPU 2  q30_eval_sft_agent    sft_agent / multi-turn agent
-GPU 3  q30_eval_oracle       oracle_sft / oracle-retrieval diagnostic
+GPU 0  q8_eval_base_direct  base_direct / direct
+GPU 1  q8_eval_base_rag     base_rag / one-shot Candidate-BM25
+GPU 2  q8_eval_sft_agent    sft_agent / multi-turn agent
+GPU 3  q8_eval_oracle       oracle_sft / oracle-retrieval diagnostic
 
 status: bash scripts/15_frozen_dev_matrix_status.sh
-attach: tmux attach -t q30_eval_sft_agent
+attach: tmux attach -t q8_eval_sft_agent
 EOF

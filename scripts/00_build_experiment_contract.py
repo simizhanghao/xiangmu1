@@ -244,12 +244,12 @@ def main() -> None:
     contract = {
         "gate": "EXPERIMENT_CONTRACT_PASS",
         "project_definition": "Evidence-Aware DeepResearch Agent with Exact On-Policy GRPO",
-        "git_commit": git_value(repo, "rev-parse", "HEAD"),
-        "git_dirty": bool(git_value(repo, "status", "--porcelain")),
+        "git_commit": git_value(project, "rev-parse", "HEAD"),
+        "git_dirty": bool(git_value(project, "status", "--porcelain")),
         "model": {
-            "path": str(repo / "Qwen3_30B/model"),
-            "config_sha256": sha256_file(repo / "Qwen3_30B/model/config.json"),
-            "tokenizer_sha256": sha256_file(repo / "Qwen3_30B/model/tokenizer.json"),
+            "path": str(project / "model"),
+            "config_sha256": sha256_file(project / "model/config.json"),
+            "tokenizer_sha256": sha256_file(project / "model/tokenizer.json"),
         },
         "inputs": tracked_inputs,
         "pairwise_overlap_counts": overlap,

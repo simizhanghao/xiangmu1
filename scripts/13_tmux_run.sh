@@ -9,29 +9,29 @@ stamp=$(date +%Y%m%d_%H%M%S)
 
 case "$stage" in
   sft)
-    session=q30_sft
+    session=q8_sft
     log="$PROJECT_ROOT/logs/sft_${stamp}.log"
     tb_dir="$SFT_ADAPTER"
     train="RUN_LOG='$log' bash '$PROJECT_ROOT/scripts/03_train_sft.sh'"
     ;;
   rl-smoke)
-    session=q30_rl_smoke
+    session=q8_rl_smoke
     log="$PROJECT_ROOT/logs/grpo_smoke_to1_${stamp}.log"
-    tb_dir="$PROJECT_ROOT/tensorboard/qwen3_30b_evidence_smoke"
+    tb_dir="$PROJECT_ROOT/tensorboard/qwen3_8b_evidence_smoke"
     train="RUN_LOG='$log' TENSORBOARD_DIR='$tb_dir' bash '$PROJECT_ROOT/scripts/07_run_evidence_grpo.sh' smoke"
     ;;
   rl-segment)
-    case "$arg" in 200|400|600|800|1000) ;; *)
-      echo "usage: $0 sft | rl-smoke | rl-segment {200|400|600|800|1000}" >&2
+    case "$arg" in 200|400|600|800) ;; *)
+      echo "usage: $0 sft | rl-smoke | rl-segment {200|400|600|800}" >&2
       exit 2
     esac
-    session="q30_grpo_${arg}"
+    session="q8_grpo_${arg}"
     log="$PROJECT_ROOT/logs/grpo_segment_to${arg}_${stamp}.log"
-    tb_dir="$PROJECT_ROOT/tensorboard/qwen3_30b_evidence_1000"
+    tb_dir="$PROJECT_ROOT/tensorboard/qwen3_8b_evidence_800"
     train="RUN_LOG='$log' TENSORBOARD_DIR='$tb_dir' bash '$PROJECT_ROOT/scripts/07_run_evidence_grpo.sh' segment '$arg'"
     ;;
   *)
-    echo "usage: $0 sft | rl-smoke | rl-segment {200|400|600|800|1000}" >&2
+    echo "usage: $0 sft | rl-smoke | rl-segment {200|400|600|800}" >&2
     exit 2
     ;;
 esac

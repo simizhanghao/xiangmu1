@@ -7,7 +7,7 @@
 先运行只读审计：
 
 ```bash
-cd /data1/hcc/deepresearch/Qwen3_30B/xiangmu
+cd /data1/hcc/deepresearch/Dee
 bash scripts/00_storage_audit.sh
 ```
 
@@ -33,13 +33,13 @@ df -h /data1/hcc/deepresearch
 ## 0. 提取冻结输入、建立实验契约并预检
 
 ```bash
-cd /data1/hcc/deepresearch/Qwen3_30B/xiangmu
+cd /data1/hcc/deepresearch/Dee
 bash scripts/00_stage_frozen_data.sh
 /data1/hcc/eca-verl-vexact/.venv/bin/python scripts/00_build_experiment_contract.py
 bash scripts/00_preflight.sh
 ```
 
-第一条复制冻结 SFT、RL parquet、BM25 index 和 dev；第二条汇总所有历史 ID，并从原始 8k pool 冻结 500 条从未使用的 sealed Test，成功标志是 `P1_DATA_CONTRACT_PASS` 且 `forbidden_overlap_max=0`。现有 RL 对部分 SFT 问题的课程式复用会被如实记录，但 frozen dev/Test 对训练与历史数据的重叠必须为零。之后主线只使用本地副本。P0 必须看到 `P0_PREFLIGHT_PASS`。预检会硬性要求至少 450 GiB 可用空间，因为 30B base、SFT merged 与一套可 resume 的 optimizer state 都很大。
+第一条复制冻结 SFT、RL parquet、BM25 index 和 dev；第二条汇总所有历史 ID，并从原始 8k pool 冻结 500 条从未使用的 sealed Test，成功标志是 `P1_DATA_CONTRACT_PASS` 且 `forbidden_overlap_max=0`。现有 RL 对部分 SFT 问题的课程式复用会被如实记录，但 frozen dev/Test 对训练与历史数据的重叠必须为零。之后主线只使用本地副本。P0 必须看到 `P0_PREFLIGHT_PASS`。预检会硬性要求至少 80 GiB 可用空间，因为 8B base、SFT merged 与一套可 resume 的 optimizer state 都需要本地盘。
 
 ## 1. 下载模型并准备冻结 SFT 数据
 
@@ -65,27 +65,27 @@ env -u LD_LIBRARY_PATH .venv/bin/python -c \
 ```bash
 python3 -m pip install --user -U modelscope
 python3 -c "import modelscope; print(modelscope.__version__)"
-mkdir -p /data1/hcc/deepresearch/Qwen3_30B/model
-modelscope download Qwen/Qwen3-30B-A3B-Instruct-2507 \
-  --local-dir /data1/hcc/deepresearch/Qwen3_30B/model \
+mkdir -p /data1/hcc/deepresearch/Dee/model
+modelscope download Qwen/Qwen3-8B \
+  --local-dir /data1/hcc/deepresearch/Dee/model \
   --max-workers 8
 ```
 
 下载结束后注册本地冻结 SFT 数据：
 
 ```bash
-cd /data1/hcc/deepresearch/Qwen3_30B/xiangmu
+cd /data1/hcc/deepresearch/Dee
 bash scripts/02_prepare_sft_data.sh 2>&1 | tee logs/prepare_sft_data.log
 ```
 
-模型使用前一节给出的 ModelScope 终端命令下载。下载中断后重复相同命令即可续传；模型固定保存在 `/data1/hcc/deepresearch/Qwen3_30B/model`。`01_download_model.sh` 只是可选封装，不是必须入口。
+模型使用前一节给出的 ModelScope 终端命令下载。下载中断后重复相同命令即可续传；模型固定保存在 `/data1/hcc/deepresearch/Dee/model`。`01_download_model.sh` 只是可选封装，不是必须入口。
 
 先做 Base 的 VeXact compatibility；该命令只占一张卡：
 
 ```bash
-cd /data1/hcc/deepresearch/Qwen3_30B/xiangmu
+cd /data1/hcc/deepresearch/Dee
 COMPAT_GPU=0 bash scripts/05_check_vexact_model.sh \
-  /data1/hcc/deepresearch/Qwen3_30B/model qwen3_base
+  /data1/hcc/deepresearch/Dee/model qwen3_base
 ```
 
 只有出现 `VEXACT_MODEL_COMPAT_PASS` 才进入 SFT。
@@ -97,7 +97,7 @@ Qwen3-MoE 的 Exact gate 固定使用 `triton-invariant` attention 与 `fused_tr
 第一次运行前，创建隔离的 LlamaFactory 训练环境。不要用 base 环境，也不要复用 VeXact `.venv`：
 
 ```bash
-cd /data1/hcc/deepresearch/Qwen3_30B/xiangmu
+cd /data1/hcc/deepresearch/Dee
 bash scripts/00_setup_sft_env.sh 2>&1 | tee logs/setup_sft_env.log
 ```
 
@@ -114,15 +114,15 @@ SFT 使用每卡 micro batch 4、梯度累积4、4卡，有效全局 batch仍为
 使用统一 tmux 启动器；它自动创建 train/log/GPU/TensorBoard 四个窗口：
 
 ```bash
-cd /data1/hcc/deepresearch/Qwen3_30B/xiangmu
+cd /data1/hcc/deepresearch/Dee
 bash scripts/13_tmux_run.sh sft
-tmux attach -t q30_sft
+tmux attach -t q8_sft
 ```
 
 查看日志/GPU而不干扰训练：
 
 ```bash
-tail -F /data1/hcc/deepresearch/Qwen3_30B/xiangmu/logs/sft_*.log
+tail -F /data1/hcc/deepresearch/Dee/logs/sft_*.log
 watch -n 1 nvidia-smi
 ```
 
@@ -131,10 +131,10 @@ TensorBoard 默认监听 `0.0.0.0:6006`，浏览器访问 `http://服务器IP:60
 训练成功后合并；merge 使用 CPU，不要在已有目标上覆盖：
 
 ```bash
-cd /data1/hcc/deepresearch/Qwen3_30B/xiangmu
+cd /data1/hcc/deepresearch/Dee
 bash scripts/04_merge_sft.sh
 COMPAT_GPU=0 bash scripts/05_check_vexact_model.sh \
-  artifacts/models/qwen3_30b_sft_merged qwen3_sft
+  artifacts/models/qwen3_8b_sft_merged qwen3_sft
 ```
 
 ## 3. 冻结 dev 的四种 controlled 协议
@@ -142,15 +142,15 @@ COMPAT_GPU=0 bash scripts/05_check_vexact_model.sh \
 每次评测占一张80G GPU。单卡时顺序执行；GPU 0–3 都空闲时可在 smoke 门通过后并行执行。mode 不能省略，否则会混淆 Direct、one-shot RAG 和多轮 Agent：
 
 ```bash
-cd /data1/hcc/deepresearch/Qwen3_30B/xiangmu
+cd /data1/hcc/deepresearch/Dee
 EVAL_GPU=0 bash scripts/08_eval_frozen_dev.sh base_direct direct \
-  /data1/hcc/deepresearch/Qwen3_30B/model
+  /data1/hcc/deepresearch/Dee/model
 EVAL_GPU=0 bash scripts/08_eval_frozen_dev.sh base_rag rag \
-  /data1/hcc/deepresearch/Qwen3_30B/model
+  /data1/hcc/deepresearch/Dee/model
 EVAL_GPU=0 bash scripts/08_eval_frozen_dev.sh sft_agent agent \
-  artifacts/models/qwen3_30b_sft_merged
+  artifacts/models/qwen3_8b_sft_merged
 EVAL_GPU=0 bash scripts/08_eval_frozen_dev.sh oracle_sft oracle \
-  artifacts/models/qwen3_30b_sft_merged
+  artifacts/models/qwen3_8b_sft_merged
 ```
 
 其中 Oracle 只做检索瓶颈诊断，不属于四个可部署主 baseline。
@@ -158,16 +158,16 @@ EVAL_GPU=0 bash scripts/08_eval_frozen_dev.sh oracle_sft oracle \
 并行正式评测前，补跑尚缺的 SFT Agent 两题 smoke：
 
 ```bash
-cd /data1/hcc/deepresearch/Qwen3_30B/xiangmu
+cd /data1/hcc/deepresearch/Dee
 EVAL_MAX_SAMPLES=2 EVAL_GPU=0 bash scripts/08_eval_frozen_dev.sh \
   smoke_sft_agent_n2 agent \
-  /data1/hcc/deepresearch/Qwen3_30B/xiangmu/artifacts/models/qwen3_30b_sft_merged
+  /data1/hcc/deepresearch/Dee/artifacts/models/qwen3_8b_sft_merged
 ```
 
 smoke 成功后，一次启动四个独立 tmux（GPU 0/1/2/3）：
 
 ```bash
-cd /data1/hcc/deepresearch/Qwen3_30B/xiangmu
+cd /data1/hcc/deepresearch/Dee
 bash scripts/14_launch_frozen_dev_matrix.sh
 bash scripts/15_frozen_dev_matrix_status.sh
 ```
@@ -175,15 +175,15 @@ bash scripts/15_frozen_dev_matrix_status.sh
 需要看最慢的多轮 Agent：
 
 ```bash
-tmux attach -t q30_eval_sft_agent
+tmux attach -t q8_eval_sft_agent
 ```
 
 ## 4. 启动 Candidate-BM25
 
 ```bash
-cd /data1/hcc/deepresearch/Qwen3_30B/xiangmu
-tmux new-session -d -s q30_retriever \
-  "cd /data1/hcc/deepresearch/Qwen3_30B/xiangmu && bash scripts/06_start_retriever.sh 2>&1 | tee logs/retriever.log"
+cd /data1/hcc/deepresearch/Dee
+tmux new-session -d -s q8_retriever \
+  "cd /data1/hcc/deepresearch/Dee && bash scripts/06_start_retriever.sh 2>&1 | tee logs/retriever.log"
 curl -s http://127.0.0.1:8001/health
 ```
 
@@ -194,16 +194,16 @@ curl -s http://127.0.0.1:8001/health
 证明训练样本未改变：
 
 ```bash
-cd /data1/hcc/deepresearch/Qwen3_30B/xiangmu
+cd /data1/hcc/deepresearch/Dee
 env -u LD_LIBRARY_PATH /data1/hcc/eca-verl-vexact/.venv/bin/python \
   scripts/02_prepare_rl_compat.py
 bash scripts/00_preflight.sh
 ```
 
 ```bash
-cd /data1/hcc/deepresearch/Qwen3_30B/xiangmu
+cd /data1/hcc/deepresearch/Dee
 bash scripts/13_tmux_run.sh rl-smoke
-tmux attach -t q30_rl_smoke
+tmux attach -t q8_rl_smoke
 ```
 
 必须看到 `GRPO_SEGMENT_PASS step=1`，并确认没有 OOM、NaN、Agent loop error、reward 全零或格式崩溃，才允许正式训练。
@@ -213,9 +213,9 @@ tmux attach -t q30_rl_smoke
 立即停止，sealed Test 始终不会被打开：
 
 ```bash
-cd /data1/hcc/deepresearch/Qwen3_30B/xiangmu
+cd /data1/hcc/deepresearch/Dee
 TENSORBOARD_PORT=6007 bash scripts/17_tmux_full_grpo_pipeline.sh
-tmux attach -t q30_grpo_full
+tmux attach -t q8_grpo_full
 ```
 
 ## 6. 200/400/600/800 分段训练与评测
@@ -223,9 +223,9 @@ tmux attach -t q30_grpo_full
 每段严格执行同一循环。以下先以 step 200 为例：
 
 ```bash
-cd /data1/hcc/deepresearch/Qwen3_30B/xiangmu
+cd /data1/hcc/deepresearch/Dee
 bash scripts/13_tmux_run.sh rl-segment 200
-tmux attach -t q30_grpo_200
+tmux attach -t q8_grpo_200
 
 EVAL_GPU=0 bash scripts/08_eval_frozen_dev.sh step200 agent \
   artifacts/evidence_grpo_ckpt/global_step_200/actor/huggingface
@@ -237,24 +237,24 @@ python3 scripts/12_build_result_table.py
 确认当前 checkpoint 过 health gate 且 `artifacts/best_hf/FROZEN_GRPO_STEP` 已写好，才继续下一段：
 
 ```bash
-cd /data1/hcc/deepresearch/Qwen3_30B/xiangmu
+cd /data1/hcc/deepresearch/Dee
 
 bash scripts/13_tmux_run.sh rl-segment 400
-tmux attach -t q30_grpo_400
+tmux attach -t q8_grpo_400
 EVAL_GPU=0 bash scripts/08_eval_frozen_dev.sh step400 agent \
   artifacts/evidence_grpo_ckpt/global_step_400/actor/huggingface
 python3 scripts/09_select_best.py --allow-partial
 ALLOW_BEST_REPLACE=1 bash scripts/10_promote_best.sh
 
 bash scripts/13_tmux_run.sh rl-segment 600
-tmux attach -t q30_grpo_600
+tmux attach -t q8_grpo_600
 EVAL_GPU=0 bash scripts/08_eval_frozen_dev.sh step600 agent \
   artifacts/evidence_grpo_ckpt/global_step_600/actor/huggingface
 python3 scripts/09_select_best.py --allow-partial
 ALLOW_BEST_REPLACE=1 bash scripts/10_promote_best.sh
 
 bash scripts/13_tmux_run.sh rl-segment 800
-tmux attach -t q30_grpo_800
+tmux attach -t q8_grpo_800
 EVAL_GPU=0 bash scripts/08_eval_frozen_dev.sh step800 agent \
   artifacts/evidence_grpo_ckpt/global_step_800/actor/huggingface
 python3 scripts/09_select_best.py
@@ -265,7 +265,7 @@ python3 scripts/12_build_result_table.py
 ## 7. 状态检查
 
 ```bash
-cd /data1/hcc/deepresearch/Qwen3_30B/xiangmu
+cd /data1/hcc/deepresearch/Dee
 bash scripts/11_status.sh
 cat results/checkpoint_selection.json
 cat results/FROZEN_DEV_TABLE.md

@@ -39,15 +39,14 @@ nvidia-smi --query-gpu=index,name,memory.total,memory.used --format=csv,noheader
 echo "[disk]"
 df -h "$PROJECT_ROOT"
 free_gb=$(df -Pk "$PROJECT_ROOT" | awk 'NR==2 {printf "%d", $4/1024/1024}')
-[[ "$free_gb" -ge 450 ]] || {
-  echo "ERROR recommend >=450 GiB free for base + merged SFT + one resumable RL state; found ${free_gb} GiB" >&2
+[[ "$free_gb" -ge 80 ]] || {
+  echo "ERROR recommend >=80 GiB free for 8B base + merged SFT + one resumable RL state; found ${free_gb} GiB" >&2
   exit 1
 }
 
 echo "[framework support]"
-grep -q 'Qwen3-30B-A3B-Instruct-2507' "$LLAMAFACTORY_ROOT/src/llamafactory/extras/constants.py"
 grep -q 'name="qwen3_nothink"' "$LLAMAFACTORY_ROOT/src/llamafactory/data/template.py"
-require_file "$VEXACT_ROOT/vexact/models/qwen3_moe/modeling_qwen3_moe.py"
+require_file "$BASE_MODEL/config.json"
 require_file "$VEXACT_ROOT/.venv/bin/python"
 require_file "$LLAMAFACTORY_PYTHON"
 env -u LD_LIBRARY_PATH CUDA_VISIBLE_DEVICES=0 "$VEXACT_ROOT/.venv/bin/python" - <<'PY'

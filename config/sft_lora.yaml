@@ -1,8 +1,8 @@
-### Frozen SFT: Qwen3-30B-A3B-Instruct-2507 + existing coldstart_v1.
-### Effective global batch = 4 × 4 accumulation × 4 GPUs = 64 (same as SFT-v1).
+### Frozen SFT: Qwen3-8B + existing coldstart_v1.
+### Effective global batch = 4 × 4 accumulation × 4 GPUs = 64.
 
 ### model
-model_name_or_path: /data1/hcc/deepresearch/Qwen3_30B/model
+model_name_or_path: /data1/hcc/deepresearch/Dee/model
 trust_remote_code: true
 flash_attn: fa2
 
@@ -16,8 +16,8 @@ lora_target: all
 deepspeed: /data1/hcc/LlamaFactory/examples/deepspeed/ds_z3_config.json
 
 ### dataset
-dataset: eca_qwen3_30b_coldstart_train
-eval_dataset: eca_qwen3_30b_coldstart_dev
+dataset: eca_qwen3_8b_coldstart_train
+eval_dataset: eca_qwen3_8b_coldstart_dev
 template: qwen3_nothink
 enable_thinking: false
 cutoff_len: 4096
@@ -26,7 +26,7 @@ preprocessing_num_workers: 16
 dataloader_num_workers: 4
 
 ### output
-output_dir: /data1/hcc/deepresearch/Qwen3_30B/xiangmu/artifacts/sft_adapter
+output_dir: /data1/hcc/deepresearch/Dee/artifacts/sft_adapter
 logging_steps: 5
 save_steps: 50
 save_total_limit: 3

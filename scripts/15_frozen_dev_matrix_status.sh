@@ -2,7 +2,7 @@
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
 
-sessions=(q30_eval_base_direct q30_eval_base_rag q30_eval_sft_agent q30_eval_oracle)
+sessions=(q8_eval_base_direct q8_eval_base_rag q8_eval_sft_agent q8_eval_oracle)
 tags=(base_direct base_rag sft_agent oracle_sft)
 
 printf '%-24s %-12s %-10s %s\n' SESSION TAG TMUX RESULT

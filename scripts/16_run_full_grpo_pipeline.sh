@@ -6,7 +6,7 @@ require_file "$PROJECT_ROOT/results/rl_parquet_compat_manifest.json"
 grep -q RL_PARQUET_COMPAT_PASS "$PROJECT_ROOT/results/rl_parquet_compat_manifest.json"
 curl -fsS "http://127.0.0.1:$RETRIEVER_PORT/health" >/dev/null
 
-tb_dir="$PROJECT_ROOT/tensorboard/qwen3_30b_evidence_1000"
+tb_dir="$PROJECT_ROOT/tensorboard/qwen3_8b_evidence_800"
 mkdir -p "$tb_dir" "$PROJECT_ROOT/logs"
 
 smoke_hf="$PROJECT_ROOT/artifacts/evidence_grpo_smoke_ckpt/global_step_1/actor/huggingface"
@@ -21,7 +21,7 @@ fi
 require_file "$smoke_hf/config.json"
 echo "[pipeline] SMOKE_HARD_GATE_PASS"
 
-for step in 200 400 600 800 1000; do
+for step in 200 400 600 800; do
   tracker="$RL_CKPT_ROOT/latest_checkpointed_iteration.txt"
   current=0
   [[ -s "$tracker" ]] && current=$(tr -d '[:space:]' <"$tracker")
@@ -69,7 +69,7 @@ if not gate:
     raise SystemExit(3)
 PY
 
-  if [[ "$step" == 1000 ]]; then
+  if [[ "$step" == 800 ]]; then
     "$PYTHON_BIN" "$PROJECT_ROOT/scripts/09_select_best.py"
   else
     "$PYTHON_BIN" "$PROJECT_ROOT/scripts/09_select_best.py" --allow-partial

@@ -1,13 +1,13 @@
-### Merge frozen Qwen3-30B LoRA adapter into a full BF16 HF checkpoint.
+### Merge frozen Qwen3-8B LoRA adapter into a full BF16 HF checkpoint.
 
 ### model
-model_name_or_path: /data1/hcc/deepresearch/Qwen3_30B/model
-adapter_name_or_path: /data1/hcc/deepresearch/Qwen3_30B/xiangmu/artifacts/sft_adapter
+model_name_or_path: /data1/hcc/deepresearch/Dee/model
+adapter_name_or_path: /data1/hcc/deepresearch/Dee/artifacts/sft_adapter
 template: qwen3_nothink
 trust_remote_code: true
 
 ### export
-export_dir: /data1/hcc/deepresearch/Qwen3_30B/xiangmu/artifacts/models/qwen3_30b_sft_merged
+export_dir: /data1/hcc/deepresearch/Dee/artifacts/models/qwen3_8b_sft_merged
 export_size: 5
 export_device: cpu
 export_legacy_format: false

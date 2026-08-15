@@ -24,7 +24,7 @@ du -sh \
   2>/dev/null || true
 
 echo "[partial downloads and generic scratch files]"
-find "$ROOT/Qwen3_30B" "$ROOT/outputs" "$ROOT/results" \
+find "$ROOT/Dee" "$ROOT/outputs" "$ROOT/results" \
   -xdev -type f \
   \( -name '*.incomplete' -o -name '*.part' -o -name '*.tmp' -o -name 'core.*' \) \
   -print 2>/dev/null || true

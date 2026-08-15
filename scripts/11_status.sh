@@ -7,7 +7,7 @@ check base_model "$BASE_MODEL/config.json"
 check sft_adapter "$SFT_ADAPTER/adapter_config.json"
 check sft_merged "$SFT_MERGED/config.json"
 check grpo_smoke "$PROJECT_ROOT/artifacts/evidence_grpo_smoke_ckpt/global_step_1/actor/huggingface/config.json"
-for step in 200 400 600 800 1000; do
+for step in 200 400 600 800; do
   check "dev_step${step}" "$PROJECT_ROOT/results/frozen_dev/step${step}/summary.json"
 done
 check rl_tracker "$RL_CKPT_ROOT/latest_checkpointed_iteration.txt"
