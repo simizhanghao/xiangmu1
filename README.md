@@ -2,7 +2,7 @@
 
 冻结总计划（唯一执行线）：[PLAN.md](PLAN.md)。
 
-**当前进度（2026-08-17）：** Data preparation complete. Gate 1.5D PASS（DeepSeek Teacher-1200 + 1 条同层 replacement）。Next: Qwen3-8B LoRA SFT smoke（≤8）。不要用旧 4550 v1 开训。
+**当前进度（2026-08-17）：** Gate 2B LoRA SFT PASS。Qwen3-8B + coldstart_v2 4550，rank 32，2 epoch，`train_loss=0.096` / `eval_loss=0.037`。产物：`outputs/21_sft_qwen3_8b_lora/`。Next: merge BF16 → Gate 3 frozen-dev@200。不要开 GRPO。
 
 ## 项目目标
 
