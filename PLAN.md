@@ -323,6 +323,34 @@ Do not compare 8B GRPO against 30B SFT.
 
 30B SFT reference only (not a must-copy): Answer F1 0.63 / Evidence F1 0.54 / search 0.80 / finish 0.935.
 
+### Official Gate 3 result（2026-08-17 PASS, HF generate）
+
+| Arm | Answer F1 | EM |
+|---|---:|---:|
+| Base Direct | 0.2647 | 0.19 |
+| Base RAG | 0.6659 | 0.57 |
+| SFT Agent | **0.6649** | 0.54 |
+
+`GATE3_TARGET_PASS`. Artifact: `Dee/results/26_gate3_frozen_dev_200/gate3_summary.json`.
+
+SFT taught the Agent loop and matched one-shot RAG. It did **not** beat RAG. Do not retrain SFT. Do not change BM25. Official 0.6649 is frozen; do not rerun 200 to replace it.
+
+Residual for RL (not SFT): missed-search 10/79; RAG-ok/Agent-bad 19; Agent-ok/RAG-bad 17; Evidence F1 0.50; `p_search_2=0`.
+
+Inference backend after this gate: **vLLM** (generate only). Harness v1 prompt/parser stay.
+
+---
+
+## Gate 3.5 — GRPO Exploration Audit（after vLLM parity）
+
+Do **not** enter 5K GRPO or even 1-step update until this passes.
+
+1. **n=8 vLLM ↔ HF Harness v1 parity**（2026-08-17 `VLLM_HF_PARITY_PASS`）. Image `vllm/vllm-openai:latest` serve + `/v1/completions`. Same 8 IDs: empty-think=0, no `<observation>`, no extra Continue, finish 1.0, search 0.875, F1 0.75 / Evidence 0.7417, route/query/finish agree 8/8. Official Gate 3 remains HF@200 F1=0.6649.
+2. **Rollout-only exploration** (no backward). Stochastic sampling, group size >1, 32–128 prompts. Require reward variance > 0 and diverse route/query/evidence. If all rollouts collapse to the same query+answer: **STOP**, retune sampling, do not GRPO.
+3. First GRPO reward stays `R_answer + 0.5 R_evidence + 0.1 R_format`. `cost λ = 0`. Do not reward search count. Do not add second-search bonus.
+
+Project target after later GRPO (not this gate): Answer F1 ≥ 0.70 or Δ ≥ +0.03 vs SFT; Evidence F1 clearly > 0.50; finish ≥ 0.95.
+
 ---
 
 ## Gate 4 — 1-step Exact GRPO smoke
@@ -474,5 +502,4 @@ Web: PAUSED
 30B project tree: DELETE (not a runtime source)
 ```
 
-Next authorized action after this plan: **Gate 0 preflight only**. No SFT until Gate 0 PASS.
-Then Gate 1 compatibility. Never skip ahead.
+Next authorized action: **Gate 3.5 rollout-only exploration audit**. No SFT retrain, no BM25 change, no 5K GRPO, no 1-step update until reward variance > 0.

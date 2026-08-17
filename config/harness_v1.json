@@ -1,8 +1,18 @@
 {
   "name": "harness_v1",
   "frozen_at": "2026-08-17",
-  "status": "FROZEN_AFTER_GATE25_AND_FIX3",
-  "reuse_for": ["gate3_frozen_dev_200", "grpo_rollout"],
+  "status": "FROZEN_AFTER_GATE25_AND_VLLM_N8_PASS",
+  "reuse_for": ["gate3_frozen_dev_200", "vllm_openai_server", "grpo_rollout"],
+  "generate_backend": {
+    "gate3_official": "hf",
+    "future_eval_and_grpo": "vllm_openai",
+    "vllm_status": "VLLM_HF_PARITY_PASS",
+    "image": "vllm/vllm-openai:latest",
+    "api": "POST /v1/completions",
+    "served_model_name": "sft8b",
+    "n8_artifact": "Dee/results/27_vllm_hf_parity_n8/parity_summary.json",
+    "constraint": "vLLM consumes render_nothink_prompt / lf_serialize_messages strings only; no vLLM chat template"
+  },
   "do_not_change_without_new_gate25": true,
   "renderer": {
     "module": "src/agents/react_loop.py",

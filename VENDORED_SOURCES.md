@@ -9,7 +9,7 @@
 | `src/rl/retrieval_server.py`、`candidate_index.py` | 同路径 | sample-scoped Candidate-BM25 服务 |
 | `src/rl/rewards_evidence.py`、`reward_breakdown.py` | 同路径 | 冻结 Evidence reward |
 | `src/rl/mask_audit.py` | 同路径 | AgentLoop 的 loss-mask 完整性依赖 |
-| `src/agents/react_loop.py` | 同路径 | frozen-dev 离线 Agent；**2026-08-17 harness v1**（剥空 think + `<tool_response>`） |
+| `src/agents/react_loop.py` | 同路径 | frozen-dev 离线 Agent；harness v1 + vLLM `/v1/completions` generate hook |
 | `src/eval/*` | 同路径 | Answer/Evidence/format/trace 指标 |
 | `src/sft/prototype_builder.py` | 同路径 | 冻结 prompt/protocol 与 JSONL loader |
 | `src/sft/teacher_reasoning.py` | 同路径 | DeepSeek Teacher-1200 validator / prompt（2026-08-17 冻结） |
@@ -17,7 +17,8 @@
 | `scripts/generate_teacher_reasoning.py` | 同路径 | Teacher API helper；只从 Dee `src/` 导入 |
 | `scripts/export_coldstart_sharegpt.py` | 同路径 | ShareGPT export / observation role |
 | `src/tools/candidate_bm25.py` | 同路径 | BM25 排序和 observation 格式 |
-| `scripts/run_agent_rollout_smoke.py` | 同路径 | frozen-dev 入口 |
+| `scripts/run_agent_rollout_smoke.py` | 同路径 | frozen-dev 入口；`--backend hf\|vllm\|vllm_openai` |
+| `scripts/audit_vllm_hf_parity.py` | 同路径 | n=8 vLLM↔HF 协议门 |
 | `scripts/start_candidate_retrieval_server.py` | 同路径 | retriever 入口 |
 | `config/rl/*` | `configs/rl/*` | tool/AgentLoop Hydra 注册 |
 

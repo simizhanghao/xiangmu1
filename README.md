@@ -2,7 +2,7 @@
 
 冻结总计划（唯一执行线）：[PLAN.md](PLAN.md)。
 
-**当前进度（2026-08-17）：** Gate 2.5 Protocol Parity **PASS**；Harness **v1 已冻结**（`config/harness_v1.json`）。SFT Agent n=8 fix3：finish=1.0，search=0.875，Answer F1=0.75，Evidence F1=0.7417，闭环 7/8。n=8 **不是**正式 Gate 3。Next: frozen-dev@200 三臂。不要开 GRPO。
+**当前进度（2026-08-17）：** 正式 Gate 3 frozen-dev@200 **`GATE3_TARGET_PASS`**；vLLM↔HF n=8 **`VLLM_HF_PARITY_PASS`**。Harness v1 + `vllm/vllm-openai` `/v1/completions` 已冻结。SFT 已复现 RAG，尚未超过 RAG。Next: Gate 3.5 rollout-only exploration。不要重训 SFT，不要改 BM25，不要直接 5K GRPO。
 
 ## 项目目标
 
@@ -70,6 +70,34 @@ Qwen3-8B (dense, non-thinking)
 4. **Gate 2.5** CPU token 级对照：`GATE_PROTOCOL_PARITY_PASS`（ROUND0/ROUND1 token 完全一致）。
 
 Harness v1 已冻结。后面 Gate 3 @200 和 GRPO rollout 必须复用 `src/agents/react_loop.py` 这一份，禁止再手写另一套 tool 格式。
+
+## 正式 Gate 3 — frozen-dev@200（2026-08-17 PASS）
+
+同一 200 题、同一 BM25@5。官方数字是 **HF generate**，不再重刷替换。
+
+| 臂 | Answer F1 | EM | 行为 |
+|---|---:|---:|---|
+| Base Direct | 0.2647 | 0.19 | 无外部文档 |
+| Base RAG | 0.6659 | 0.57 | 题目当 query，Top-5 |
+| **SFT Agent** | **0.6649** | 0.54 | search 71.5% / internal 28.5%，finish 1.0 |
+
+- 硬底 ≥0.55、目标 ≥0.60、finish 健康线 ≥0.90 → **过目标线**。
+- SFT 把裸 8B（0.26）训成可自主 search→tool_response→evidence→answer 的 Agent，并**对齐** one-shot RAG。Δ(Agent−RAG) = −0.001。
+- Evidence F1 = 0.50；`p_search_2 = 0`。漏搜 10/79；RAG对/Agent错 19；Agent对/RAG错 17。
+- 这是 cold-start 成绩，不是项目终局。超过 RAG 交给 Evidence-aware GRPO。第一版 reward 保持 `R_answer + 0.5 R_evidence + 0.1 R_format`，`cost λ = 0`。
+
+## vLLM ↔ HF n=8（2026-08-17 PASS）
+
+`vllm/vllm-openai:latest` serve + Harness v1 拼 prompt + `/v1/completions`。对照 HF fix3 同一 8 题。
+
+| 检查 | 结果 |
+|---|---|
+| empty think / `<observation>` / extra Continue | 0 / 0 / 0 |
+| finish / parse / search | 1.0 / 1.0 / 0.875 |
+| Answer F1 / Evidence F1 | 0.75 / 0.7417（与 HF 相同） |
+| route / query / finish 对齐 | 8/8 / 8/8 / 8/8 |
+
+以后 eval / rollout / GRPO 生成走 vLLM 服务，不走 HF `model.generate()`，也不走 vLLM chat template。
 
 ## 从零执行流程
 

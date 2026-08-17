@@ -21,7 +21,12 @@ from typing import Any, Dict, List
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from src.agents.react_loop import RolloutConfig, run_search_agent_rollout  # noqa: E402
+from src.agents.react_loop import (  # noqa: E402
+    RolloutConfig,
+    make_openai_completions_fn,
+    make_vllm_generate_fn,
+    run_search_agent_rollout,
+)
 from src.sft.prototype_builder import load_jsonl  # noqa: E402
 
 DEFAULT_MODEL = str(REPO_ROOT / "outputs" / "00_sft_v1_merged")
@@ -29,6 +34,7 @@ DEFAULT_MODEL = str(REPO_ROOT / "outputs" / "00_sft_v1_merged")
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Phase 3A agent rollout smoke.")
+    p.add_argument("--config", type=str, default="")
     p.add_argument("--model-path", type=str, default=DEFAULT_MODEL)
     p.add_argument("--eval-file", type=str, default="data/eval/hotpotqa_200.jsonl")
     p.add_argument("--output-dir", type=str, default=str(REPO_ROOT / "results"))
@@ -39,6 +45,17 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--run-tag", type=str, default="phase3a")
     p.add_argument("--temperature", type=float, default=0.0)
+    p.add_argument("--debug", action="store_true")
+    p.add_argument(
+        "--backend",
+        type=str,
+        default="hf",
+        choices=("hf", "vllm", "vllm_openai"),
+    )
+    p.add_argument("--vllm-base-url", type=str, default="http://127.0.0.1:18000/v1")
+    p.add_argument("--vllm-model-name", type=str, default="sft8b")
+    p.add_argument("--gpu-memory-utilization", type=float, default=0.6)
+    p.add_argument("--max-model-len", type=int, default=8192)
     return p.parse_args()
 
 
@@ -137,17 +154,36 @@ def main() -> None:
     )
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"[phase3a] model={args.model_path} device={device}", flush=True)
+    print(f"[phase3a] model={args.model_path} device={device} backend={args.backend}", flush=True)
     print(f"[phase3a] n={len(samples)} top_k={args.top_k} "
           f"max_search_turns={args.max_search_turns}", flush=True)
     print(f"[phase3a] run_dir={run_dir}", flush=True)
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, local_files_only=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model_path,
-        dtype=torch.bfloat16,
-        local_files_only=True,
-    ).to(device).eval()
+    model = None
+    generate_fn = None
+    if args.backend == "vllm_openai":
+        generate_fn = make_openai_completions_fn(args.vllm_base_url, args.vllm_model_name)
+        print(f"[phase3a] vllm_openai {args.vllm_base_url} model={args.vllm_model_name}", flush=True)
+    elif args.backend == "vllm":
+        from vllm import LLM
+
+        llm = LLM(
+            model=args.model_path,
+            tokenizer=args.model_path,
+            dtype="bfloat16",
+            trust_remote_code=True,
+            gpu_memory_utilization=args.gpu_memory_utilization,
+            max_model_len=args.max_model_len,
+            enforce_eager=True,
+        )
+        generate_fn = make_vllm_generate_fn(llm)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_path,
+            dtype=torch.bfloat16,
+            local_files_only=True,
+        ).to(device).eval()
 
     cfg = RolloutConfig(
         top_k=args.top_k,
@@ -162,7 +198,9 @@ def main() -> None:
         run_dir / "metrics.jsonl"
     ).open("w", encoding="utf-8") as mf:
         for i, sample in enumerate(samples, 1):
-            result = run_search_agent_rollout(sample, model, tokenizer, cfg)
+            result = run_search_agent_rollout(
+                sample, model, tokenizer, cfg, generate_fn=generate_fn
+            )
             tr = result.trace.to_jsonl_dict()
             tf.write(json.dumps(tr, ensure_ascii=False) + "\n")
             tf.flush()
@@ -204,6 +242,7 @@ def main() -> None:
         {
             "phase": "3A",
             "purpose": "search_agent_rollout_smoke",
+            "backend": args.backend,
             "model_path": args.model_path,
             "git_commit": git_commit(),
             "eval_file": str(eval_path),

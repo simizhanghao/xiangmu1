@@ -10,7 +10,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
@@ -204,17 +204,91 @@ def _append_policy_steps(
         )
 
 
+GenerateFn = Callable[..., Tuple[str, int, int]]
+
+
+def _truncate_at_stop(text: str) -> str:
+    cut = len(text or "")
+    for s in _STOP_STRINGS:
+        idx = (text or "").find(s)
+        if idx >= 0:
+            cut = min(cut, idx + len(s))
+    return (text or "")[:cut]
+
+
+def make_vllm_generate_fn(llm: Any) -> GenerateFn:
+    """vLLM backend: consume already-rendered Harness v1 prompts. No chat template."""
+    from vllm import SamplingParams
+
+    def _fn(prompt: str, *, max_new_tokens: int, temperature: float) -> Tuple[str, int, int]:
+        kwargs: Dict[str, Any] = {
+            "temperature": 0.0 if temperature <= 0 else float(temperature),
+            "max_tokens": int(max_new_tokens),
+            "stop": list(_STOP_STRINGS),
+        }
+        if temperature > 0:
+            kwargs["top_p"] = 1.0
+        try:
+            params = SamplingParams(**kwargs, include_stop_str_in_output=True)
+        except TypeError:
+            params = SamplingParams(**kwargs)
+        outs = llm.generate([prompt], params, use_tqdm=False)
+        out = outs[0]
+        text = _truncate_at_stop(out.outputs[0].text)
+        ptok = len(out.prompt_token_ids or [])
+        gtok = len(out.outputs[0].token_ids or [])
+        return text, ptok, gtok
+
+    return _fn
+
+
+def make_openai_completions_fn(base_url: str, model: str) -> GenerateFn:
+    """Call a running vLLM OpenAI server. Prompt is already Harness v1 text."""
+    import json
+    from urllib.request import Request, urlopen
+
+    url = base_url.rstrip("/") + "/completions"
+
+    def _fn(prompt: str, *, max_new_tokens: int, temperature: float) -> Tuple[str, int, int]:
+        payload: Dict[str, Any] = {
+            "model": model,
+            "prompt": prompt,
+            "max_tokens": int(max_new_tokens),
+            "temperature": 0.0 if temperature <= 0 else float(temperature),
+            "stop": list(_STOP_STRINGS),
+            "include_stop_str_in_output": True,
+        }
+        req = Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(req, timeout=300) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        text = _truncate_at_stop((data.get("choices") or [{}])[0].get("text") or "")
+        usage = data.get("usage") or {}
+        return text, int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0)
+
+    return _fn
+
+
 @torch.inference_mode()
 def _generate_until_action(
-    model: PreTrainedModel,
+    model: Optional[PreTrainedModel],
     tokenizer: PreTrainedTokenizerBase,
     messages: List[Dict[str, str]],
     *,
     max_new_tokens: int,
     temperature: float,
+    generate_fn: Optional[GenerateFn] = None,
 ) -> Tuple[str, int, int]:
     """One generate call; stop at first closed action tag when supported."""
     prompt = render_nothink_prompt(tokenizer, messages)
+    if generate_fn is not None:
+        return generate_fn(prompt, max_new_tokens=max_new_tokens, temperature=temperature)
+    if model is None:
+        raise ValueError("HF generate needs a model when generate_fn is None")
     inputs = tokenizer(prompt, return_tensors="pt")
     inputs = {k: v.to(model.device) for k, v in inputs.items()}
     prompt_len = int(inputs["input_ids"].shape[-1])
@@ -239,23 +313,20 @@ def _generate_until_action(
         out_ids = model.generate(**inputs, **gen_kwargs)
 
     gen_ids = out_ids[0, prompt_len:]
-    text = tokenizer.decode(gen_ids, skip_special_tokens=True)
-    cut = len(text)
-    for s in _STOP_STRINGS:
-        idx = text.find(s)
-        if idx >= 0:
-            cut = min(cut, idx + len(s))
-    text = text[:cut]
+    text = _truncate_at_stop(tokenizer.decode(gen_ids, skip_special_tokens=True))
     return text, prompt_len, int(gen_ids.shape[-1])
 
 
 def run_search_agent_rollout(
     sample: Dict[str, Any],
-    model: PreTrainedModel,
+    model: Optional[PreTrainedModel],
     tokenizer: PreTrainedTokenizerBase,
     config: Optional[RolloutConfig] = None,
+    generate_fn: Optional[GenerateFn] = None,
 ) -> RolloutResult:
     cfg = config or RolloutConfig()
+    if generate_fn is None and model is None:
+        raise ValueError("run_search_agent_rollout needs model or generate_fn")
     t0 = time.perf_counter()
 
     question = sample["question"]
@@ -286,6 +357,7 @@ def run_search_agent_rollout(
             messages,
             max_new_tokens=cfg.max_new_tokens,
             temperature=cfg.temperature,
+            generate_fn=generate_fn,
         )
         raw_gens.append(chunk)
         prompt_tokens += ptok
@@ -398,6 +470,7 @@ def run_search_agent_rollout(
                 messages,
                 max_new_tokens=cfg.max_new_tokens,
                 temperature=cfg.temperature,
+                generate_fn=generate_fn,
             )
             raw_gens.append(chunk2)
             prompt_tokens += ptok2
