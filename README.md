@@ -2,7 +2,7 @@
 
 冻结总计划（唯一执行线）：[PLAN.md](PLAN.md)。
 
-**当前进度（2026-08-17）：** Gate 2B LoRA SFT PASS。Qwen3-8B + coldstart_v2 4550，rank 32，2 epoch，`train_loss=0.096` / `eval_loss=0.037`。产物：`outputs/21_sft_qwen3_8b_lora/`。Next: merge BF16 → Gate 3 frozen-dev@200。不要开 GRPO。
+**当前进度（2026-08-17）：** Gate 2B LoRA SFT PASS；merge BF16 PASS（`outputs/22_sft_qwen3_8b_merged/`，`GATE_MERGE_BF16_PASS`）；Gate 3 CPU Candidate-BM25 n=8 PASS（`results/23_gate3_smoke_n8/`，title recall@5=0.9375）。Next: Gate 3 GPU smoke ≤8（Base Direct / Base RAG / SFT Agent）。不要开 GRPO，不要直接跑 frozen-dev 200。
 
 ## 项目目标
 

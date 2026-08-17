@@ -1,13 +1,13 @@
-### Merge frozen Qwen3-8B LoRA adapter into a full BF16 HF checkpoint.
+### Merge Gate 2B LoRA into a standalone Qwen3-8B BF16 model.
+### No training. No Gate 3 eval in this file.
 
-### model
 model_name_or_path: /data1/hcc/deepresearch/Dee/model
-adapter_name_or_path: /data1/hcc/deepresearch/Dee/artifacts/sft_adapter
+adapter_name_or_path: /data1/hcc/deepresearch/Dee/outputs/21_sft_qwen3_8b_lora
 template: qwen3_nothink
 trust_remote_code: true
+finetuning_type: lora
 
-### export
-export_dir: /data1/hcc/deepresearch/Dee/artifacts/models/qwen3_8b_sft_merged
+export_dir: /data1/hcc/deepresearch/Dee/outputs/22_sft_qwen3_8b_merged
 export_size: 5
-export_device: cpu
+export_device: auto
 export_legacy_format: false
