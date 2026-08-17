@@ -18,7 +18,10 @@ Dee/model Qwen3-8B
 [1] Base Compatibility
         │
         ▼
-[2] Agentic LoRA SFT
+[1.5] 8B capability relabel + SFT v2 selection
+        │
+        ▼
+[2] Agentic LoRA SFT (8B-aligned 4550 v2)
         │
         ▼
 [3] Controlled SFT Evaluation
@@ -64,7 +67,7 @@ Do not mix RL gains with search-backend gains.
 ### Milestone A — Trainable Agentic RL
 
 ```text
-8B Contract → Compatibility → SFT → SFT Eval
+8B Contract → Compatibility → 8B relabel / SFT v2 → SFT → SFT Eval
   → GRPO Smoke → Throughput → 200/400/600/800
   → unique best → sealed Test → FINAL POLICY FREEZE
 ```
@@ -108,7 +111,8 @@ Do not reopen these while executing Gates 0–8.
 | Web | PAUSED until Final Policy Freeze |
 | Fallbacks | Qwen3-8B → Qwen2.5-7B-Instruct (framework fail) → Qwen3-4B (throughput RED) |
 
-Do **not** reuse the 30B LoRA adapter. Do **not** rebuild SFT data because the backbone changed.
+Do **not** reuse the 30B LoRA adapter. Do **not** regenerate Gold / BM25. Do **not** let Kimi write full 4550 Agent trajectories.
+**Do** rebuild SFT *selection* with Qwen3-8B Direct/Oracle labels, then write **all 1200** new `evidence_reasoning` rationales with local Kimi 2.6 (Gate 1.5B).
 
 ---
 
@@ -117,8 +121,9 @@ Do **not** reuse the 30B LoRA adapter. Do **not** rebuild SFT data because the b
 | Gate | What runs | What it proves | Next |
 |---|---|---|---|
 | **0 Contract** | Retarget `Dee` identity/SFT/GRPO/checkpoint contracts; full-repo preflight | No live path still sources `Qwen3_30B` | Gate 1 |
-| **1 Compatibility** | HF + tokenizer + non-thinking + VeOmni/VeXact min init | 8B can enter the frozen Exact stack | Gate 2 |
-| **2 SFT** | Retrain LoRA on 4550; merge BF16 | Agent protocol is re-learned | Gate 3 |
+| **1 Compatibility** | HF + tokenizer + non-thinking + VeOmni/VeXact min init | 8B can enter the frozen Exact stack | Gate 1.5 |
+| **1.5 Relabel** | 8B Direct+Oracle on 8k pool; rebuild 4550 v2 selection; **1200/1200** Kimi grounded rationales (thinking ON, save 2–6 sentence final only) | Cold-start matches 8B capability | Gate 2 |
+| **2 SFT** | LoRA on **8B-aligned 4550 v2**; merge BF16 | Agent protocol is re-learned | Gate 3 |
 | **3 SFT Eval** | Base Direct / Base RAG / SFT Agent @ frozen-dev 200 | Qualified RL start | Gate 4 |
 | **4 GRPO Smoke** | Exact GRPO 1 real update on the **128** smoke set | rollout→reward→Adam→ckpt | Gate 5 |
 | **5 Throughput** | 20 consecutive steps on the **128** set | 800 is deliverable | Gate 5.5 |
@@ -204,6 +209,70 @@ Not: does it answer well?
 PASS: HF load, tokenizer, chat template, non-thinking, short generation, VeOmni recognition, VeXact init.
 
 ---
+
+## Gate 1.5 — 8B capability relabel (before SFT)
+
+Priority: stale **3B Direct/Oracle selection** > Kimi coverage of `evidence_reasoning` > 4550 size.
+Old 400 Kimi + 800 template was a cost-sensitive hard-case booster, **not** a coverage claim. Local Kimi (`http://10.16.137.2:8000/v1`, `Kimi-K2.6-CT-FP8KV`) removes that constraint. Do **not** rerun the old 400 alone. Do **not** Kimi-write internal / search_format / evidence.
+
+### 1.5A — Qwen3-8B Direct + Oracle on the same 8k pool
+
+```text
+8k HotpotQA pool
+  → 8B Direct  (question only)
+  → 8B Oracle  (question + gold supporting docs)
+  → compare vs 3B labels
+```
+
+Publish the 3B→8B shift matrix, especially `3B Direct wrong → 8B Direct correct`.
+If that cell is large (tens of percent), old search_format teaching is misaligned and v2 is mandatory.
+
+### 1.5B — After 8B selection: Kimi writes all 1200 `evidence_reasoning`
+
+Order is locked:
+
+```text
+8k Direct/Oracle  →  1.5C select 4550  →  1.5B Kimi on the NEW 1200
+```
+
+Teacher: local Kimi 2.6, thinking **ON** internally. Save only the final concise grounded justification (typically 2–6 sentences, minimum sufficient). Never store hidden chain-of-thought / “First I need to think…” noise.
+
+Input = question + gold supporting facts + gold answer. Code still owns evidence tags and `<answer>`. Kimi only writes the `<think>` rationale.
+
+Keep the old 400 as cache/audit only. Do not treat reuse-rate ≥250 as a skip gate.
+
+Conceptual mix inside the 1200 (exact counts after 8B map, not frozen now): easy bridge / normal / oracle-hard. Do not restrict Kimi to hardest-only.
+
+### 1.5C — Rebuild selection, not Gold/BM25/protocol
+
+Reuse Question / gold / BM25 / protocol templates. Only re-assign categories with 8B labels. Keep mix **950 / 1250 / 1150 / 1200**. Output `qwen3_8b_coldstart_v2`.
+
+Selection signals only: Direct EM, Oracle EM, Oracle token F1, `sample_id`, seed=42.
+**Do not** use `evidence_f1`. This gate writes a manifest/audit only — no Builder text, no Kimi.
+
+```text
+Direct EM=1 (1778)                    → internal 950   (stratified type×level)
+Direct=0 Oracle=1 (1853)              → search_format 1250 + evidence 603
+Direct=0 Oracle=0 (4369)
+  highest Oracle F1                   → evidence 补 547
+  remaining tertiles 400+400+400      → evidence_reasoning 1200
+```
+
+1227 Direct-ok / Oracle-err stay in the **internal candidate pool**. They only prove: 8B already produced the exact answer without search. Do not read them as “Oracle made the model worse.”
+
+Reasoning bands (after removing the 547 evidence hard items), equal-count tertiles of remaining Oracle token F1:
+`near_solved` / `medium` / `genuine_hard` × 400.
+
+Script: `Dee/scripts/select_8b_coldstart_v2.py`.
+Manifest: `Dee/results/16_select_8b_coldstart_v2/`.
+
+Then Builder v2 (deterministic text) → Kimi on the frozen 1200 ids → Gate 2 LoRA. Query rewriting stays for on-policy GRPO.
+
+Builder v2 script: `Dee/scripts/build_8b_coldstart_v2.py` — PASS.
+Teacher-1200: `Dee/scripts/fill_teacher_reasoning_v2.py` fills the frozen
+1200 ids only (`thinking` ON, save 2–6 sentence JSON rationale). Do not
+change sample_ids. Smoke ≤8 first. Do not start Gate 2 until Teacher Gate
++ 1.5D audit PASS.
 
 ## Gate 2 — Agentic LoRA SFT
 

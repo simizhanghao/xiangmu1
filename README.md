@@ -2,6 +2,8 @@
 
 冻结总计划（唯一执行线）：[PLAN.md](PLAN.md)。
 
+**当前进度（2026-08-17）：** Gate 0/1 PASS；1.5A 8k 能力地图 PASS；1.5C 4550 选题 PASS；Builder v2 骨架 PASS；Teacher-1200 **8 条 smoke PASS**（经 `127.0.0.1:18000` 隧道）。下一步是全量 1200 Kimi rationale，然后 1.5D 审计，再 Gate 2 LoRA。不要用旧 4550 v1 开训。
+
 ## 项目目标
 
 在不更换数据、retriever、reward 与 Agent protocol 的前提下，把已验证的 Qwen2.5-3B 系统升级到 [`Qwen/Qwen3-8B`](https://huggingface.co/Qwen/Qwen3-8B) dense，交付一个可在 4×A100-80G 上完整跑通 full-parameter Evidence-GRPO 的最终 DeepResearch Agent。
@@ -12,7 +14,7 @@
 
 ```text
 Qwen3-8B (dense, non-thinking)
-  → LoRA SFT（原 coldstart_v1）
+  → LoRA SFT（8B-aligned coldstart v2，1200 Kimi pending）
   → Merge BF16 HF model
   → Evidence GRPO（Exact VeXact + Candidate-BM25，GPU Adam）
   → 20-step throughput gate
