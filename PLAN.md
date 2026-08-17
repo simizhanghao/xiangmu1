@@ -266,13 +266,25 @@ Reasoning bands (after removing the 547 evidence hard items), equal-count tertil
 Script: `Dee/scripts/select_8b_coldstart_v2.py`.
 Manifest: `Dee/results/16_select_8b_coldstart_v2/`.
 
-Then Builder v2 (deterministic text) → Kimi on the frozen 1200 ids → Gate 2 LoRA. Query rewriting stays for on-policy GRPO.
+Then Builder v2 (deterministic text) → DeepSeek-V4-Flash on the frozen 1200
+ids → Gate 2 LoRA. Query rewriting stays for on-policy GRPO.
 
 Builder v2 script: `Dee/scripts/build_8b_coldstart_v2.py` — PASS.
 Teacher-1200: `Dee/scripts/fill_teacher_reasoning_v2.py` fills the frozen
-1200 ids only (`thinking` ON, save 2–6 sentence JSON rationale). Do not
-change sample_ids. Smoke ≤8 first. Do not start Gate 2 until Teacher Gate
-+ 1.5D audit PASS.
+1200 ids only. Teacher is **DeepSeek `deepseek-v4-flash` only**
+(`https://api.deepseek.com`, thinking ON, `reasoning_effort=max`,
+`response_format=json_object`, `max_tokens=4096`). Input = question +
+gold supporting evidence + reference answer. Never feed distractor
+documents. Save only the 2–6 sentence JSON `reasoning`; never persist
+`reasoning_content`. Coverage heuristic is a soft audit. DeepSeek
+30-sample stratified smoke (10/10/10 bands) is
+`GATE_DEEPSEEK_TEACHER_SMOKE_PASS` (local rescore, 0 API calls;
+hard_fail=1 leftover surname alias). Teacher contract is frozen.
+Do not start Gate 2 until Teacher-1200 Gate + 1.5D audit PASS.
+
+Teacher hard gate (n=1200): unique=1200, pending=0, grounded ≥98%,
+answer derivation ≥98%, hard-fail ≤1%, XML/meta leak=0, sample-id delta=0,
+`reasoning_content_saved=0`. Lexical evidence-coverage is a **soft audit**.
 
 ## Gate 2 — Agentic LoRA SFT
 
