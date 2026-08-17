@@ -2,7 +2,7 @@
 
 冻结总计划（唯一执行线）：[PLAN.md](PLAN.md)。
 
-**当前进度（2026-08-17）：** Gate 0/1 PASS；1.5A 8k 能力地图 PASS；1.5C 4550 选题 PASS；Builder v2 骨架 PASS；Teacher-1200 **8 条 smoke PASS**（经 `127.0.0.1:18000` 隧道）。下一步是全量 1200 Kimi rationale，然后 1.5D 审计，再 Gate 2 LoRA。不要用旧 4550 v1 开训。
+**当前进度（2026-08-17）：** Data preparation complete. Gate 1.5D PASS（DeepSeek Teacher-1200 + 1 条同层 replacement）。Next: Qwen3-8B LoRA SFT smoke（≤8）。不要用旧 4550 v1 开训。
 
 ## 项目目标
 
@@ -14,7 +14,7 @@
 
 ```text
 Qwen3-8B (dense, non-thinking)
-  → LoRA SFT（8B-aligned coldstart v2，1200 Kimi pending）
+  → LoRA SFT（8B-aligned coldstart v2，1200 DeepSeek rationale）
   → Merge BF16 HF model
   → Evidence GRPO（Exact VeXact + Candidate-BM25，GPU Adam）
   → 20-step throughput gate
@@ -25,7 +25,7 @@ Qwen3-8B (dense, non-thinking)
 ## 已冻结的实验定义
 
 - Backbone：`Qwen/Qwen3-8B`，`qwen3_nothink`，`enable_thinking=false`。
-- SFT：原 ShareGPT coldstart_v1（4550），2 epochs，LoRA rank 32，effective global batch 64。
+- SFT：ShareGPT coldstart_v2（4550，`sharegpt_filled.jsonl`），2 epochs，LoRA rank 32，effective global batch 64。旧 v1 仅历史对照。
 - RL smoke：当前 128/16 parquet **只用于 Gate 4/5**，不是最终训练集。
 - 正式 GRPO：Gate 5.5 构建约 **5,000** HotpotQA questions；fast-dev 200 + formal-dev 1000。
 - RL 算法：Evidence GRPO，`lambda_e=0.5`、LR `1e-6`、`temperature=0.9`、`top_p=0.95`、`n=4`。

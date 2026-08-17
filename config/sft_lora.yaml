@@ -1,6 +1,6 @@
-### Frozen SFT: Qwen3-8B + existing coldstart_v1.
+### Frozen SFT: Qwen3-8B + 1.5D coldstart_v2 (sharegpt_filled, 4550).
 ### Fast 4×80G LoRA: 8 × 2 accum × 4 GPUs = global batch 64 (unchanged).
-### batch=16 OOM on backward (tried 18.62 GiB, GPU2 had 15 GiB free).
+### Do not point this file back at coldstart_v1. Smoke first; no train in this gate.
 
 ### model
 model_name_or_path: /data1/hcc/deepresearch/Dee/model
@@ -17,8 +17,9 @@ lora_target: all
 deepspeed: /data1/hcc/LlamaFactory/examples/deepspeed/ds_z2_config.json
 
 ### dataset
-dataset: eca_qwen3_8b_coldstart_train
-eval_dataset: eca_qwen3_8b_coldstart_dev
+dataset_dir: /data1/hcc/deepresearch/Dee/results/21_register_8b_coldstart_v2
+dataset: eca_qwen3_8b_coldstart_v2_train
+eval_dataset: eca_qwen3_8b_coldstart_v2_dev
 template: qwen3_nothink
 enable_thinking: false
 cutoff_len: 4096
@@ -27,7 +28,7 @@ preprocessing_num_workers: 16
 dataloader_num_workers: 8
 
 ### output
-output_dir: /data1/hcc/deepresearch/Dee/artifacts/sft_adapter
+output_dir: /data1/hcc/deepresearch/Dee/outputs/21_sft_qwen3_8b_lora
 logging_steps: 5
 save_steps: 50
 save_total_limit: 3

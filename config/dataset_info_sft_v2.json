@@ -1,0 +1,32 @@
+{
+  "eca_qwen3_8b_coldstart_v2_train": {
+    "file_name": "/data1/hcc/deepresearch/Dee/results/21_register_8b_coldstart_v2/eca_qwen3_8b_coldstart_v2_train.jsonl",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "system": "system"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "observation_tag": "observation"
+    }
+  },
+  "eca_qwen3_8b_coldstart_v2_dev": {
+    "file_name": "/data1/hcc/deepresearch/Dee/results/21_register_8b_coldstart_v2/eca_qwen3_8b_coldstart_v2_dev.jsonl",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "system": "system"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "observation_tag": "observation"
+    }
+  }
+}
