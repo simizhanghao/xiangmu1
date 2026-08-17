@@ -12,6 +12,10 @@
 | `src/agents/react_loop.py` | 同路径 | frozen-dev 的同协议离线 Agent evaluator |
 | `src/eval/*` | 同路径 | Answer/Evidence/format/trace 指标 |
 | `src/sft/prototype_builder.py` | 同路径 | 冻结 prompt/protocol 与 JSONL loader |
+| `src/sft/teacher_reasoning.py` | 同路径 | DeepSeek Teacher-1200 validator / prompt（2026-08-17 冻结） |
+| `src/sft/coldstart_builder.py` | 同路径 | frozen-dev overlap 与 train-only 断言 |
+| `scripts/generate_teacher_reasoning.py` | 同路径 | Teacher API helper；只从 Dee `src/` 导入 |
+| `scripts/export_coldstart_sharegpt.py` | 同路径 | ShareGPT export / observation role |
 | `src/tools/candidate_bm25.py` | 同路径 | BM25 排序和 observation 格式 |
 | `scripts/run_agent_rollout_smoke.py` | 同路径 | frozen-dev 入口 |
 | `scripts/start_candidate_retrieval_server.py` | 同路径 | retriever 入口 |

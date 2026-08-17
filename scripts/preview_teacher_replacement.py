@@ -10,18 +10,18 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-PARENT = Path("/data1/hcc/deepresearch")
-sys.path.insert(0, str(PARENT))
+DEE = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(DEE))
+SHARED_DATA = Path("/data1/hcc/deepresearch")
 
 from src.sft.coldstart_builder import load_frozen_ids
 from src.sft.prototype_builder import gold_answer_of, load_jsonl, resolve_evidence_refs
 
 DROP = "hotpotqa_distractor_train_5a8bbd2e5542995d1e6f1435"
 SEED = 42
-DEE = Path("/data1/hcc/deepresearch/Dee")
-POOL = PARENT / "data/sft/source/hotpotqa_distractor_train_pool_n8000.jsonl"
+POOL = SHARED_DATA / "data/sft/source/hotpotqa_distractor_train_pool_n8000.jsonl"
 MANIFEST = DEE / "results/16_select_8b_coldstart_v2/selection_manifest.jsonl"
-FROZEN_VAL = PARENT / "data/eval/hotpotqa_200_ids.txt"
+FROZEN_VAL = SHARED_DATA / "data/eval/hotpotqa_200_ids.txt"
 SEL = DEE / "scripts/select_8b_coldstart_v2.py"
 
 

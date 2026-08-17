@@ -19,8 +19,9 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-PARENT = Path("/data1/hcc/deepresearch")
-sys.path.insert(0, str(PARENT))
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO))
+SHARED_DATA = Path("/data1/hcc/deepresearch")
 
 from src.sft.prototype_builder import gold_answer_of, load_jsonl, resolve_evidence_refs
 from src.sft.teacher_reasoning import (
@@ -32,11 +33,10 @@ from src.sft.teacher_reasoning import (
     wrap_think,
 )
 
-REPO = Path(__file__).resolve().parents[1]
 PLACEHOLDER = "__TEACHER_REASONING_PENDING__"
 FROZEN_IDS = REPO / "results/17_build_8b_coldstart_v2/ids_evidence_reasoning.json"
 MANIFEST = REPO / "results/16_select_8b_coldstart_v2/selection_manifest.jsonl"
-POOL = Path("/data1/hcc/deepresearch/data/sft/source/hotpotqa_distractor_train_pool_n8000.jsonl")
+POOL = SHARED_DATA / "data/sft/source/hotpotqa_distractor_train_pool_n8000.jsonl"
 _SENT_RE = re.compile(r"[.!?]+")
 _XML_RE = re.compile(r"</?(?:search|observation|evidence|think|answer|internal)\b", re.I)
 BANDS = ("genuine_hard", "medium", "near_solved")
@@ -108,7 +108,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_gen():
-    path = PARENT / "scripts/generate_teacher_reasoning.py"
+    path = REPO / "scripts/generate_teacher_reasoning.py"
     spec = importlib.util.spec_from_file_location("generate_teacher_reasoning", path)
     mod = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -581,9 +581,17 @@ def main() -> None:
     if args.dry_run:
         print("DRY_RUN API_CALLS=0", flush=True)
         return
-    gen = load_gen()
-    args.api_key = (args.api_key or "").strip()
-    probe_teacher(args.base_url, args.api_key, args.model)
+    rescored_path = out / "teacher_cache.rescored.jsonl"
+    if not todo and rescored_path.is_file():
+        cache = load_cache(rescored_path)
+        print(f"USING_RESCORED {rescored_path} N={len(cache)} API_CALLS=0", flush=True)
+    if todo:
+        gen = load_gen()
+        args.api_key = (args.api_key or "").strip()
+        probe_teacher(args.base_url, args.api_key, args.model)
+    else:
+        gen = None
+        print("SKIP_TEACHER_PROBE TODO=0 API_CALLS=0", flush=True)
     fail_log = out / "retry_failures.jsonl"
 
     def log_attempt_failure(rec: dict) -> None:
@@ -786,15 +794,26 @@ def main() -> None:
         with (out / "sharegpt_filled.jsonl").open("w", encoding="utf-8") as handle:
             for row in new_s:
                 handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+        filled_ids = [r["sample_id"] for r in new_c]
+        dropped = str(audit["dropped_id"]) if audit else ""
+        added = str(audit["replacement_id"]) if audit else ""
         apply_audit = {
             "filled": n_fill,
             "pending_left": pending,
-            "ids_unchanged": [r["sample_id"] for r in new_c] == [r["sample_id"] for r in canon],
+            "ids_unchanged": filled_ids == [r["sample_id"] for r in canon],
+            "n_canon": len(new_c),
+            "unique": len(set(filled_ids)),
+            "dropped_present": int(bool(dropped) and dropped in set(filled_ids)),
+            "replacement_present": int(bool(added) and added in set(filled_ids)),
+            "missing_teacher": pending,
+            "api_calls": 0 if not todo else len(todo),
         }
         (out / "apply_audit.json").write_text(json.dumps(apply_audit, indent=2) + "\n")
         print(json.dumps(apply_audit, indent=2))
         if pending != 0 or n_fill != 1200:
             raise SystemExit("apply did not clear all 1200 pending slots")
+        if audit and (apply_audit["dropped_present"] or not apply_audit["replacement_present"]):
+            raise SystemExit("apply replacement set mismatch")
 
     if "FAIL" in gate["gate"]:
         raise SystemExit(1)

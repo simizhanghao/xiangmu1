@@ -10,8 +10,9 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-PARENT = Path("/data1/hcc/deepresearch")
-sys.path.insert(0, str(PARENT))
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO))
+SHARED_DATA = Path("/data1/hcc/deepresearch")
 
 from src.sft.coldstart_builder import assert_train_only, load_frozen_ids
 from src.sft.prototype_builder import (
@@ -31,13 +32,12 @@ from src.sft.prototype_builder import (
     validate_sft_row,
 )
 
-REPO = Path(__file__).resolve().parents[1]
-POOL = Path("/data1/hcc/deepresearch/data/sft/source/hotpotqa_distractor_train_pool_n8000.jsonl")
+POOL = SHARED_DATA / "data/sft/source/hotpotqa_distractor_train_pool_n8000.jsonl"
 MANIFEST = REPO / "results/16_select_8b_coldstart_v2/selection_manifest.jsonl"
 RETRIEVAL = (
-    PARENT / "results/retrieval_candidate_bm25_n8000_20260807_162150/retrieval_results.jsonl"
+    SHARED_DATA / "results/retrieval_candidate_bm25_n8000_20260807_162150/retrieval_results.jsonl"
 )
-FROZEN_VAL = PARENT / "data/eval/hotpotqa_200_ids.txt"
+FROZEN_VAL = SHARED_DATA / "data/eval/hotpotqa_200_ids.txt"
 PLACEHOLDER = "__TEACHER_REASONING_PENDING__"
 QUOTAS = {
     "internal": 950,
@@ -64,7 +64,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_export():
-    path = PARENT / "scripts/export_coldstart_sharegpt.py"
+    path = REPO / "scripts/export_coldstart_sharegpt.py"
     spec = importlib.util.spec_from_file_location("export_coldstart_sharegpt", path)
     mod = importlib.util.module_from_spec(spec)
     assert spec.loader is not None

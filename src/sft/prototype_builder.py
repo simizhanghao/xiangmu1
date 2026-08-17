@@ -472,17 +472,23 @@ def validate_sft_row(row: Dict[str, Any]) -> List[str]:
             errors.append(f"{sid}: evidence_reasoning template invalid")
         else:
             reasoning = tags["reasoning"][0]
-            gold_n = normalize_answer(row.get("gold_answer") or "")
-            reasoning_n = normalize_answer(reasoning)
-            if gold_n and gold_n not in reasoning_n:
-                errors.append(f"{sid}: reasoning not answer-consistent")
-            # template_v0 embeds evidence spans; Kimi teacher is bridge-only
-            # and must NOT paste evidence verbatim.
             reasoning_source = (row.get("provenance") or {}).get("reasoning_source")
+            if reasoning_source == "pending":
+                if reasoning.strip() != "__TEACHER_REASONING_PENDING__":
+                    errors.append(f"{sid}: pending reasoning placeholder mismatch")
+            else:
+                gold_n = normalize_answer(row.get("gold_answer") or "")
+                reasoning_n = normalize_answer(reasoning)
+                if gold_n and gold_n not in reasoning_n:
+                    errors.append(
+                        f"{sid}: reasoning not answer-consistent"
+                    )
+            # template_v0 embeds evidence spans; Kimi / pending skip verbatim paste.
             require_evidence_spans = reasoning_source not in {
                 "kimi2.6",
                 "teacher",
                 "kimi",
+                "pending",
             }
             if require_evidence_spans:
                 for ref in row.get("evidence_refs") or []:
