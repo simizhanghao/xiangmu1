@@ -297,6 +297,15 @@ SFT teaches **how to act**. GRPO teaches **how to act better**.
 
 ---
 
+## Gate 2.5 — Protocol Parity（2026-08-17 PASS）
+
+Training–inference protocol must match before official Gate 3 / GRPO.
+
+- Round 0: no empty `<think></think>` after `<|im_start|>assistant`
+- Round 1: ShareGPT `observation` → LF `<tool_response>` slot; no extra `Continue`
+- Frozen contract: `config/harness_v1.json` + `src/agents/react_loop.py`
+- n=8 fix3 (not official): Answer F1 0.75 / Evidence F1 0.7417 / search 0.875 / finish 1.0
+
 ## Gate 3 — SFT frozen-dev@200
 
 Rerun the first three protocols on the **same 8B backbone**:

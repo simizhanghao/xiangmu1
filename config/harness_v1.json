@@ -1,0 +1,44 @@
+{
+  "name": "harness_v1",
+  "frozen_at": "2026-08-17",
+  "status": "FROZEN_AFTER_GATE25_AND_FIX3",
+  "reuse_for": ["gate3_frozen_dev_200", "grpo_rollout"],
+  "do_not_change_without_new_gate25": true,
+  "renderer": {
+    "module": "src/agents/react_loop.py",
+    "functions": [
+      "render_nothink_prompt",
+      "lf_serialize_messages",
+      "lf_observation_slot"
+    ],
+    "round0": "HF apply_chat_template(enable_thinking=False) + strip empty <think></think>",
+    "round1_plus": "LlamaFactory qwen3_nothink observation slot"
+  },
+  "chat_template": "qwen3_nothink",
+  "enable_thinking": false,
+  "empty_think_strip": true,
+  "tool_turn": {
+    "sharegpt_role": "observation",
+    "inference_role": "observation",
+    "body_only": true,
+    "slot": "<|im_start|>user\n<tool_response>\n{content}\n</tool_response><|im_end|>\n<|im_start|>assistant\n",
+    "forbidden_in_prompt": ["<observation>", "Continue. Prefer"]
+  },
+  "parser": {
+    "loose_answer_without_opener": true,
+    "one_format_nudge_if_no_tags": true
+  },
+  "generation_defaults": {
+    "temperature": 0.0,
+    "max_new_tokens": 512,
+    "max_search_turns": 2,
+    "top_k_docs": 5
+  },
+  "n8_fix3_not_official_gate3": {
+    "finish_rate": 1.0,
+    "search_rate": 0.875,
+    "mean_token_f1": 0.75,
+    "mean_evidence_f1": 0.7417,
+    "closed_loop": 7
+  }
+}

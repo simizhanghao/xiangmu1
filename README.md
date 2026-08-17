@@ -2,7 +2,7 @@
 
 冻结总计划（唯一执行线）：[PLAN.md](PLAN.md)。
 
-**当前进度（2026-08-17）：** Gate 3 GPU 三臂 n=8 smoke **工程 PASS**（fix2）。根因不是 SFT 没学会 search，而是推理 chat template 在 `enable_thinking=false` 时仍插入空 `<think></think>`，与训练用的 `qwen3_nothink` 不一致。剥掉该前缀后：SFT Agent `search_rate` 0.125→0.875，Answer F1 0→0.6875，闭环 6/8。n=8 不是正式效果门。Next: 对齐 observation 包装后跑 frozen-dev@200。不要开 GRPO。
+**当前进度（2026-08-17）：** Gate 2.5 Protocol Parity **PASS**；Harness **v1 已冻结**（`config/harness_v1.json`）。SFT Agent n=8 fix3：finish=1.0，search=0.875，Answer F1=0.75，Evidence F1=0.7417，闭环 7/8。n=8 **不是**正式 Gate 3。Next: frozen-dev@200 三臂。不要开 GRPO。
 
 ## 项目目标
 
@@ -41,6 +41,7 @@ Qwen3-8B (dense, non-thinking)
 |---|---|
 | `config/project.env` | 所有固定路径和运行参数 |
 | `config/sft_*.yaml` | 8B SFT 与 merge 配置 |
+| `config/harness_v1.json` | Gate 2.5 冻结的推理协议；GRPO 必须复用 |
 | `config/rl/` | 本地 Candidate-BM25 tool 与 AgentLoop 注册配置 |
 | `src/` | AgentLoop、retriever、Evidence reward、协议与评测 |
 | `data/` | 冻结输入快照（git ignored） |
@@ -48,18 +49,27 @@ Qwen3-8B (dense, non-thinking)
 | `scripts/` | 预检、SFT、GRPO、frozen-dev、选模 |
 | `artifacts/` | SFT merged、RL checkpoint、best HF（git ignored） |
 
-## Gate 3 n=8 smoke（2026-08-17）
+## Gate 2.5 / Gate 3 n=8（2026-08-17）
 
-同一 frozen-dev 前 8 题。n=8 **不是** Answer F1 正式门。
+同一 frozen-dev 前 8 题。n=8 **不是** Answer F1 正式门。正式硬底仍是 frozen-dev@200 上 SFT Agent Answer F1 ≥ 0.55。
 
-| 臂 | 结果 | 说明 |
-|---|---|---|
-| Base Direct | F1=0.00 | 无文档，8B 猜错；通路正常 |
-| Base RAG | F1=0.625 | Top-5 有用 |
-| SFT Agent 初跑 / fix1 | F1=0，search=0.125 | 几乎不搜；finish 可被 parser 救活 |
-| **SFT Agent fix2** | **F1=0.6875，search=0.875，finish=0.875，闭环 6/8** | 剥掉空 think 前缀后协议恢复 |
+| 臂 / 修复 | finish | search | Answer F1 | Evidence F1 | 闭环 |
+|---|---:|---:|---:|---:|---:|
+| Base Direct | — | — | 0.00 | — | — |
+| Base RAG | — | — | 0.625 | — | — |
+| SFT Agent 初跑 | 0.50 | 0.125 | 0 | ~0 | 1 |
+| fix1 parser | 1.0 | 0.125 | 0 | ~0 | 1 |
+| fix2 剥空 think | 0.875 | 0.875 | 0.6875 | 0.14 | 6 |
+| **fix3 `<tool_response>`** | **1.0** | **0.875** | **0.75** | **0.7417** | **7** |
 
-先前问题：HF `apply_chat_template(enable_thinking=False)` 仍在 `<|im_start|>assistant` 后插入 `<think>\n\n</think>\n\n`。SFT 用 LlamaFactory `qwen3_nothink`，生成起点没有这段。模型因此退化成散文/直接 `<answer>`。修复在父仓库 `src/agents/react_loop.py`（剥空 think；漏开标签的 `</answer>` 仍回收）。observation 仍是 `<observation>`，与训练的 `<tool_response>` 未对齐，Evidence F1 仅 0.14。
+因果：模型没坏，SFT 也没白训。坏的是训练/推理协议。
+
+1. **fix1** 只修 parser，search 仍 1/8。
+2. **fix2** 去掉 HF 在 `enable_thinking=False` 时仍插入的空 `<think></think>`。search 0.125→0.875，Answer F1 0→0.6875。
+3. **fix3** 把第二轮 `<observation>`+`Continue` 改成 LlamaFactory `qwen3_nothink` 的 `<tool_response>` 槽位。Evidence F1 0.14→0.74。
+4. **Gate 2.5** CPU token 级对照：`GATE_PROTOCOL_PARITY_PASS`（ROUND0/ROUND1 token 完全一致）。
+
+Harness v1 已冻结。后面 Gate 3 @200 和 GRPO rollout 必须复用 `src/agents/react_loop.py` 这一份，禁止再手写另一套 tool 格式。
 
 ## 从零执行流程
 

@@ -9,7 +9,7 @@
 | `src/rl/retrieval_server.py`、`candidate_index.py` | 同路径 | sample-scoped Candidate-BM25 服务 |
 | `src/rl/rewards_evidence.py`、`reward_breakdown.py` | 同路径 | 冻结 Evidence reward |
 | `src/rl/mask_audit.py` | 同路径 | AgentLoop 的 loss-mask 完整性依赖 |
-| `src/agents/react_loop.py` | 同路径 | frozen-dev 的同协议离线 Agent evaluator |
+| `src/agents/react_loop.py` | 同路径 | frozen-dev 离线 Agent；**2026-08-17 harness v1**（剥空 think + `<tool_response>`） |
 | `src/eval/*` | 同路径 | Answer/Evidence/format/trace 指标 |
 | `src/sft/prototype_builder.py` | 同路径 | 冻结 prompt/protocol 与 JSONL loader |
 | `src/sft/teacher_reasoning.py` | 同路径 | DeepSeek Teacher-1200 validator / prompt（2026-08-17 冻结） |

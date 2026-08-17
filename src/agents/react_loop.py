@@ -1,6 +1,7 @@
 """Phase 3A: multi-turn Search Agent loop (generate → tool → observe → continue).
 
 No training. Observation tokens are environment-injected (loss_mask=False in Trace).
+Harness v1: Qwen3 no-think prefix + LlamaFactory qwen3_nothink tool_response slot.
 """
 
 from __future__ import annotations
@@ -62,6 +63,89 @@ class RolloutResult:
     raw_generations: List[str] = field(default_factory=list)
 
 
+_LOOSE_ANSWER_RE = re.compile(r"(?is)(?:<answer>\s*)?(.*?)\s*</answer>")
+# HF Qwen3 still appends an empty think block when enable_thinking=False.
+# SFT used LlamaFactory qwen3_nothink, which starts generation at assistant\n.
+_EMPTY_THINK_TAIL = re.compile(r"(?:<think>\s*</think>\s*)$", re.IGNORECASE)
+_FORMAT_NUDGE = (
+    "Your last message had no closed action tag. "
+    "Reply with either <search>query</search> or "
+    "<answer>short answer</answer> only."
+)
+
+
+# LlamaFactory qwen3_nothink format_observation (training slot). Body only.
+_LF_OBS_SLOT = (
+    "<|im_start|>user\n<tool_response>\n{content}\n"
+    "</tool_response><|im_end|>\n<|im_start|>assistant\n"
+)
+
+
+def lf_observation_slot(obs_body: str) -> str:
+    """Exact qwen3_nothink observation serialization. Do not add Continue."""
+    return _LF_OBS_SLOT.replace("{content}", obs_body)
+
+
+def tool_response_user_content(obs_body: str) -> str:
+    """Tag wrap only; inference should use role=observation + lf_observation_slot."""
+    return f"<tool_response>\n{obs_body}\n</tool_response>"
+
+
+def _hf_nothink(
+    tokenizer: PreTrainedTokenizerBase,
+    messages: List[Dict[str, str]],
+    *,
+    add_generation_prompt: bool,
+) -> str:
+    try:
+        prompt = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=add_generation_prompt,
+            enable_thinking=False,
+        )
+    except TypeError:
+        prompt = tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=add_generation_prompt
+        )
+    return _EMPTY_THINK_TAIL.sub("", prompt)
+
+
+def lf_serialize_messages(messages: List[Dict[str, str]]) -> str:
+    """Full qwen3_nothink string (system/user/assistant/observation)."""
+    rest = list(messages)
+    system = ""
+    if rest and rest[0].get("role") == "system":
+        system = rest[0]["content"]
+        rest = rest[1:]
+    out = f"<|im_start|>system\n{system}<|im_end|>\n"
+    for m in rest:
+        role = m["role"]
+        if role == "user":
+            out += (
+                f"<|im_start|>user\n{m['content']}<|im_end|>\n"
+                "<|im_start|>assistant\n"
+            )
+        elif role == "assistant":
+            out += m["content"] + "<|im_end|>\n"
+        elif role == "observation":
+            out += lf_observation_slot(m["content"])
+        else:
+            raise ValueError(f"unsupported role in lf_serialize: {role}")
+    if rest and rest[-1]["role"] == "assistant":
+        out += "<|im_start|>assistant\n"
+    return out
+
+
+def render_nothink_prompt(
+    tokenizer: PreTrainedTokenizerBase, messages: List[Dict[str, str]]
+) -> str:
+    """Round-0: HF no-think + empty-think strip. After tool: LF serialize."""
+    if any(m.get("role") == "observation" for m in messages):
+        return lf_serialize_messages(messages)
+    return _hf_nothink(tokenizer, messages, add_generation_prompt=True)
+
+
 def _extract_closed_tags(text: str) -> Dict[str, List[str]]:
     out: Dict[str, List[str]] = {}
     for name, cre in _TAG_BODY.items():
@@ -69,6 +153,18 @@ def _extract_closed_tags(text: str) -> Dict[str, List[str]]:
         if hits:
             out[name] = hits
     return out
+
+
+def _recover_loose_answer(text: str) -> Optional[str]:
+    """Accept a closed <answer> pair, or a dangling </answer> without opener."""
+    tags = _extract_closed_tags(text)
+    if tags.get("answer"):
+        return tags["answer"][0]
+    if "</answer>" not in (text or "").lower():
+        return None
+    m = _LOOSE_ANSWER_RE.search(text or "")
+    body = (m.group(1).strip() if m else "")
+    return body or None
 
 
 def _first_action(tags: Dict[str, List[str]]) -> Optional[str]:
@@ -89,7 +185,6 @@ def _append_policy_steps(
     prefer_order: Sequence[str] = ("think", "internal", "search", "evidence", "answer"),
 ) -> None:
     """Append TraceSteps for closed tags in a generation chunk (policy tokens)."""
-    # Preserve approximate emission order by scanning left-to-right.
     events: List[Tuple[int, str, str]] = []
     for name in prefer_order:
         cre = _TAG_BODY[name]
@@ -119,9 +214,7 @@ def _generate_until_action(
     temperature: float,
 ) -> Tuple[str, int, int]:
     """One generate call; stop at first closed action tag when supported."""
-    prompt = tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True
-    )
+    prompt = render_nothink_prompt(tokenizer, messages)
     inputs = tokenizer(prompt, return_tensors="pt")
     inputs = {k: v.to(model.device) for k, v in inputs.items()}
     prompt_len = int(inputs["input_ids"].shape[-1])
@@ -135,7 +228,6 @@ def _generate_until_action(
     if temperature > 0:
         gen_kwargs["temperature"] = temperature
 
-    # Prefer native stop_strings when available (transformers>=4.42-ish).
     try:
         out_ids = model.generate(
             **inputs,
@@ -148,7 +240,6 @@ def _generate_until_action(
 
     gen_ids = out_ids[0, prompt_len:]
     text = tokenizer.decode(gen_ids, skip_special_tokens=True)
-    # If stop_strings unavailable, truncate at first stop marker.
     cut = len(text)
     for s in _STOP_STRINGS:
         idx = text.find(s)
@@ -186,6 +277,7 @@ def run_search_agent_rollout(
     finished = False
     route_first = "none"
     hit_max_search = False
+    format_nudge_used = False
 
     for _round in range(cfg.max_rounds):
         chunk, ptok, gtok = _generate_until_action(
@@ -212,7 +304,19 @@ def run_search_agent_rollout(
                 route_first = "search"
 
         if action is None:
-            # No closed action — keep raw think-ish text if any, then abort.
+            loose = _recover_loose_answer(chunk)
+            if loose:
+                steps.append(
+                    TraceStep(
+                        step_id=len(steps),
+                        step_type="answer",
+                        content=loose,
+                        loss_mask=True,
+                        metadata={"loose_answer": True},
+                    )
+                )
+                finished = True
+                break
             if chunk.strip():
                 steps.append(
                     TraceStep(
@@ -223,6 +327,11 @@ def run_search_agent_rollout(
                         metadata={"unparsed_chunk": True},
                     )
                 )
+            if not format_nudge_used:
+                format_nudge_used = True
+                messages.append({"role": "assistant", "content": chunk})
+                messages.append({"role": "user", "content": _FORMAT_NUDGE})
+                continue
             break
 
         _append_policy_steps(steps, chunk)
@@ -232,11 +341,9 @@ def run_search_agent_rollout(
             break
 
         if action == "internal":
-            # Internal may already include answer in same chunk.
             if "answer" in tags:
                 finished = True
                 break
-            # Ask model to answer without search.
             messages.append({"role": "assistant", "content": chunk})
             messages.append(
                 {
@@ -249,7 +356,6 @@ def run_search_agent_rollout(
             )
             continue
 
-        # action == search
         query = tags["search"][-1]
         search_queries.append(query)
         search_turns += 1
@@ -265,7 +371,6 @@ def run_search_agent_rollout(
                 all_docs.append(d)
 
         obs_body = format_observation_text(docs)
-        obs_block = f"<observation>\n{obs_body}\n</observation>"
         observation_tokens += len(tokenizer.encode(obs_body, add_special_tokens=False))
 
         steps.append(
@@ -284,16 +389,9 @@ def run_search_agent_rollout(
         )
 
         messages.append({"role": "assistant", "content": chunk})
-        cont = (
-            f"{obs_block}\n"
-            "Continue. Prefer <evidence> then <think> then <answer>. "
-            f"You may <search> again only if necessary "
-            f"(searches used: {search_turns}/{cfg.max_search_turns})."
-        )
-        messages.append({"role": "user", "content": cont})
+        messages.append({"role": "observation", "content": obs_body})
 
         if search_turns >= cfg.max_search_turns:
-            # Allow one more generation after last observation, but no further search execution.
             chunk2, ptok2, gtok2 = _generate_until_action(
                 model,
                 tokenizer,
@@ -305,15 +403,24 @@ def run_search_agent_rollout(
             prompt_tokens += ptok2
             generated_tokens += gtok2
             tags2 = _extract_closed_tags(chunk2)
-            # Drop extra search tags — turn budget exhausted.
-            if "search" in tags2 and "answer" not in tags2:
+            loose2 = _recover_loose_answer(chunk2)
+            if "search" in tags2 and "answer" not in tags2 and not loose2:
                 hit_max_search = True
             _append_policy_steps(
                 steps,
                 chunk2,
                 prefer_order=("think", "evidence", "answer", "internal"),
             )
-            # Remove trailing search steps illegally added after budget.
+            if "answer" not in tags2 and loose2:
+                steps.append(
+                    TraceStep(
+                        step_id=len(steps),
+                        step_type="answer",
+                        content=loose2,
+                        loss_mask=True,
+                        metadata={"loose_answer": True},
+                    )
+                )
             while steps and steps[-1].step_type == "search":
                 steps.pop()
                 for i, st in enumerate(steps):
@@ -322,7 +429,6 @@ def run_search_agent_rollout(
                 finished = True
             break
 
-    # Ensure single trailing answer for schema when unfinished.
     if not any(s.step_type == "answer" for s in steps):
         steps.append(
             TraceStep(
@@ -334,7 +440,6 @@ def run_search_agent_rollout(
             )
         )
     else:
-        # Drop anything after first answer; renumber.
         ans_i = next(i for i, s in enumerate(steps) if s.step_type == "answer")
         steps = steps[: ans_i + 1]
         for i, st in enumerate(steps):
@@ -361,7 +466,6 @@ def run_search_agent_rollout(
         latency_ms=round(latency_ms, 1),
     )
 
-    # Evidence F1 when gold supporting facts exist and evidence was emitted.
     evid_meta: Dict[str, Any] = {}
     evid_texts = [s.content for s in steps if s.step_type == "evidence"]
     sf = sample.get("supporting_facts")
@@ -396,7 +500,6 @@ def run_search_agent_rollout(
         },
     )
     errors = validate_trace_record(trace)
-    # Unfinished placeholder answers fail "non-empty meaningful" only if empty — ours is non-empty.
     if not finished:
         errors.append("rollout_unfinished_no_answer")
 
@@ -409,7 +512,6 @@ def run_search_agent_rollout(
         "format_valid": float(len([e for e in errors if "rollout_unfinished" not in e]) == 0),
         "evidence_f1": float((evid_meta or {}).get("evidence_f1") or 0.0),
     }
-    # Prefer basic_metrics when finished
     if finished and pred:
         try:
             bm = basic_metrics(trace)
