@@ -2,7 +2,7 @@
 
 冻结总计划（唯一执行线）：[PLAN.md](PLAN.md)。
 
-**当前进度（2026-08-18）：** Gate 5 20-step **PASS**；smoke-20 frozen-dev@200 **`NO_COLLAPSE`**（vLLM det F1 0.7155 / Evidence 0.614，相对 Gate 3 SFT HF 0.6649 / 0.50）。这是 128 集 ~5 epoch 的诊断，**不是正式 Δ_RL**。正式训练从 `outputs/22_sft_qwen3_8b_merged` 重启。Next：Gate 5.5 建 5K。不改 `07_run_evidence_grpo.sh`。
+**当前进度（2026-08-19）：** Formal-v1@200 **`FORMAL_V1_STEP200_FROZEN_DEV200_NO_COLLAPSE`**。vLLM det vs Gate 3 HF：Answer F1 **0.6988** / EM 0.545 / Evidence **0.7727**（SFT 为 0.6649 / 0.54 / 0.50）。Next：从 formal `global_step_200` 续到 400。不从 SFT 重开，不从 smoke-20 续训。不拆 sealed test。
 
 ## 项目目标
 
@@ -20,7 +20,9 @@ Qwen3-8B (dense, non-thinking)
   → Step A/B：SGLang μ/π audit + Decoupled Token-TIS 1-step（已 PASS）
   → Gate 5：SGLang + Token-TIS 20-step（已 PASS）
   → smoke-20 frozen-dev@200 NO_COLLAPSE（诊断，非正式 Δ_RL）
-  → Gate 5.5 5K，从 SFT merged 重启 Formal GRPO 200→800
+  → Gate 5.5 5K，从 SFT merged 开 Formal GRPO-v1
+  → Formal-v1@200 frozen-dev NO_COLLAPSE（首个正式里程碑，还不是 unique best）
+  → 400 → 600 → 800 + 每次 frozen-dev@200
   → 唯一 best checkpoint
 ```
 
@@ -33,8 +35,22 @@ Qwen3-8B (dense, non-thinking)
 | Step A SGLang μ/π | `SGLANG_PROB_AUDIT_PASS` | search 0.375；ESS **0.999**；ρ mean 0.997；mild mismatch |
 | Gate 5 Token-TIS 20-step | `SGLANG_TOKEN_TIS_20STEP_PASS` | 20/20 in **45 min**；median ~2.3 min/step；reward 0.28→0.38；ESS≥0.9998 |
 | smoke-20 frozen-dev@200 | `SMOKE20_FROZEN_DEV200_NO_COLLAPSE` | vLLM det F1 **0.7155** / EM 0.575 / Evidence **0.614**；finish=1.0；**不是正式 Δ_RL** |
+| Gate 5.5 formal 5K | `GATE55_FORMAL_5K_PASS` | train 5000 / formal-dev 1000；SFT overlap 2809 recorded；BM25 index 5016 |
+| Formal-v1@200 | `FORMAL_V1_STEP200_FROZEN_DEV200_NO_COLLAPSE` | 5K、200 step、~6h；frozen-dev vLLM F1 **0.6988** / EM 0.545 / Evidence **0.7727**；search=1.0；**还不是 unique best** |
 
-正式训练是 **Exact-validated, rollout-corrected Agentic GRPO**，不要叫 Exact。VeXact 只作锚，不再跑 20-step / 200–800。摘要：`results/33_gate4_grpo_1step/gate4_summary.json`、`results/34_sglang_prob_audit/sglang_prob_summary.json`、`results/35_sglang_token_tis_1step/stepb_summary.json`。
+正式训练是 **Exact-validated, rollout-corrected Agentic GRPO**，不要叫 Exact。VeXact 只作锚，不再跑 20-step / 200–800。摘要：`results/33_gate4_grpo_1step/gate4_summary.json`、`results/34_sglang_prob_audit/sglang_prob_summary.json`、`results/35_sglang_token_tis_1step/stepb_summary.json`、`results/41_frozen_dev_formal_grpo200/formal200_dev200_summary.json`。
+
+## Formal-v1@200（2026-08-19，首个正式里程碑）
+
+5K train、batch 32、n=4、lr 1e-6、T=0.7、SGLang + Token-TIS。Init = `outputs/22_sft_qwen3_8b_merged`。**不是** smoke `global_step_20`。200/200 无 NaN/OOM，ESS≈1。
+
+| 模型 | Answer F1 | EM | Evidence F1 | search | 后端 |
+|---|---:|---:|---:|---:|---|
+| SFT Agent（Gate 3） | 0.6649 | 0.54 | 0.50 | 0.715 | **HF greedy** |
+| Formal-v1@200 | **0.6988** | 0.545 | **0.7727** | 1.0 | **vLLM det** |
+| Δ | **+0.0339** | +0.005 | **+0.273** | +0.285 | 后端不同，n=8 已对齐 |
+
+读法：主收益在 Evidence，答案几乎持平。训练后期 T=0.7 的 `answer_em` 掉到 0，但 greedy 评测 EM 仍是 0.545——train reward 不是 F1。`p_search_2` 仍为 0，不能声称 multi-hop。smoke-20 的 0.7155 只是 128 题诊断，不作正式对照。400/600/800 后再选 unique best。
 
 ## 已冻结的实验定义
 
@@ -131,7 +147,8 @@ Harness v1 已冻结。后面 Gate 3 @200 和 GRPO rollout 必须复用 `src/age
   → 20-step throughput on 128
   → smoke-20 frozen-dev@200（NO_COLLAPSE；不从 step20 续训）
   → Gate 5.5 构建正式 HotpotQA-5K
-  → 200 → 400 → 600 → 800 + fast-dev 200 / formal-dev 1000
+  → Formal-v1@200 frozen-dev（NO_COLLAPSE；从 formal-200 续 400）
+  → 400 → 600 → 800 + fast-dev 200 / formal-dev 1000
   → 唯一 best 后再开 sealed Test
 ```
 

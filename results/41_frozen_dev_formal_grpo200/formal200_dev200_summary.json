@@ -1,0 +1,53 @@
+{
+  "gate": "FORMAL_V1_STEP200_FROZEN_DEV200_NO_COLLAPSE",
+  "purpose": "First formal GRPO milestone on 5K. Selection metric = frozen-dev@200 only.",
+  "n": 200,
+  "eval_file": "data/eval/hotpotqa_200.jsonl",
+  "backend": "vllm_openai",
+  "protocol": "Harness v1, Candidate-BM25@5, T=0, max_search_turns=2",
+  "ckpt": "results/39_formal_grpo_v1/ckpt/global_step_200",
+  "hf_export": "results/40_hf_formal_grpo_step200/model_view",
+  "run_dir": "results/41_frozen_dev_formal_grpo200/n200/agent_rollout_n200_20260819_000410_formal200_n200",
+  "elapsed_seconds": 504.5,
+  "sft_gate3_hf": {
+    "mean_token_f1": 0.6649,
+    "mean_em": 0.54,
+    "mean_evidence_f1": 0.5,
+    "search_rate": 0.715,
+    "finish_rate": 1.0,
+    "note": "Official Gate 3 is HF greedy. This formal eval is vLLM det (n=8 parity PASS)."
+  },
+  "formal_grpo200_vllm": {
+    "mean_token_f1": 0.6988,
+    "mean_em": 0.545,
+    "mean_evidence_f1": 0.7727,
+    "search_rate": 1.0,
+    "internal_rate": 0.0,
+    "finish_rate": 1.0,
+    "parse_ok_rate": 1.0,
+    "p_search_2": 0.0,
+    "observation_mask_ok_rate": 1.0,
+    "mean_generated_tokens": 219.5
+  },
+  "delta_vs_sft_gate3": {
+    "f1": 0.0339,
+    "em": 0.005,
+    "evidence_f1": 0.2727
+  },
+  "smoke20_diagnostic_only": {
+    "mean_token_f1": 0.7155,
+    "mean_em": 0.575,
+    "mean_evidence_f1": 0.6141,
+    "note": "Not a formal baseline. 128-set ~5-epoch ckpt."
+  },
+  "train_time_note": "T=0.7 train EM fell to 0 after ~step 29 while EvidenceF1 rose; greedy frozen-dev EM stayed 0.545. Train reward is not F1.",
+  "collapse": false,
+  "do_not": [
+    "Treat this as unique best before 400/600/800",
+    "Open sealed test",
+    "Resume from smoke global_step_20",
+    "Claim query rewrite or multi-hop (p_search_2=0)",
+    "Call SGLang+TIS Exact"
+  ],
+  "next": "Resume Formal-v1 from formal global_step_200 to 400. Same reward/TIS/batch."
+}

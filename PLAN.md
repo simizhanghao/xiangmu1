@@ -471,13 +471,23 @@ Reward on the 128 smoke set rose 0.28→~0.38 and did **not** collapse. IS staye
 
 Do **not** treat 0.7155 as formal Δ_RL: (1) official SFT number is HF, this run is vLLM det; (2) the ckpt saw the same 128 prompts ~5 epochs. **Formal GRPO-v1 restarts from `outputs/22_sft_qwen3_8b_merged`**, not `global_step_20`. Do not retune T / entropy / batch / TIS / reward.
 
-Next: Gate 5.5 freeze ~5K RL train (question-only to policy; gold only for reward). Then Formal-v1 200→400→600→800 with frozen-dev@200 at each milestone. Sealed test once after unique best.
-
 ---
 
-## Gate 5.5 — Formal HotpotQA-5K contract (after smoke+throughput)
+## Gate 5.5 — Formal HotpotQA-5K contract
 
-Do **not** treat the current 128/16 parquet as the final GRPO train set.
+**DONE 2026-08-18 `GATE55_FORMAL_5K_PASS`.** Artifact: `Dee/data/rl/formal_5k/freeze_manifest.json`. Smoke FSDP ckpts deleted (~415G). SFT merged kept.
+
+| Split | n | Overlap |
+|---|---:|---|
+| Formal train | **5000** unique | frozen-dev 0, sealed 0, SFT **2809** (curriculum, recorded) |
+| Formal-dev IDs | 1000 | disjoint from train / frozen-dev / sealed |
+| veRL val | 16 | disjoint; index n=5016 |
+
+Policy prompt = system + `Question:` only. Gold answer + supporting facts are reward-only. No extra filtering. Human preview: `data/rl/formal_5k/human_preview_32.jsonl`.
+
+Next: reload BM25 to the 5K index, then Formal-v1 from `outputs/22_sft_qwen3_8b_merged` (not smoke-20). Segment 200 → frozen-dev@200 → 400/600/800. Sealed test once after unique best.
+
+Do **not** treat the 128/16 parquet as the final GRPO train set.
 That split exists only to debug leakage, Candidate-BM25, reward, AgentLoop, and Exact GRPO.
 
 | Split | Size | Role |
@@ -504,6 +514,8 @@ Runs on the **Gate 5.5 5K set**, not the 128 smoke set.
 800 is the **maximum budget**, not the model name.
 Watch Answer F1 / Evidence F1 / EM up; Finish / Format / tool behavior must not collapse.
 Best may be 200, 400, 600, or 800. Confirm on formal-dev 1000 before freeze.
+
+**DONE 2026-08-19 Formal-v1@200 frozen-dev:** `FORMAL_V1_STEP200_FROZEN_DEV200_NO_COLLAPSE`. Artifact: `Dee/results/41_frozen_dev_formal_grpo200/formal200_dev200_summary.json`. vLLM det vs Gate 3 HF: Answer F1 0.6988 vs 0.6649, EM 0.545 vs 0.54, Evidence F1 0.7727 vs 0.50, search 1.0 vs 0.715. Protocol healthy; `p_search_2` still 0. Not unique best. Next: resume formal `global_step_200` → 400.
 
 ---
 
