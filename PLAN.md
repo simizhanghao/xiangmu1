@@ -364,9 +364,13 @@ Do **not** enter 5K GRPO or even 1-step update until this passes.
 | search_2 | 0 | 0 | 0 |
 | branch | TRIAL_B | TRIAL_C | **STOP_SWEEP** |
 
-Raising T/top_p only opened **route** (and reward variance). Search query stayed a **byte-identical question copy**. Do **not** try T≥1.5. Official 32×8 recheck is blocked until query exploration opens by another method. Next layer (not this commit): turn-0 higher T, post-tool lower T. Still no SFT retrain.
-5. **Hard keep:** finish≥0.95, parse≥0.95, group reward-std nonzero ≥0.30, nonzero advantage ≥0.20. **New query hard door** (only groups with ≥2 search rollouts): `conditional_query_diversity_rate ≥ 0.20` (target 0.30); record `mean_unique_queries_per_searchable_group` (want >1.2). Useful paraphrase diversity, not noise. `search_2` is observed, **not** a hard fail. No second-search bonus, no force-2-search.
-6. Reward stays `R_answer + 0.5 R_evidence + 0.1 R_format`. `cost λ = 0`. Frozen: SFT ckpt, 4550, Teacher, BM25 top-5, Harness v1, vLLM completions. Only `temperature` / `top_p` may change until official Gate 3.5 PASS.
+Raising T/top_p only opened **route** (and reward variance). Search query stayed a **byte-identical question copy**. Do **not** try T≥1.5. Do **not** implement round-specific sampling. Still no SFT retrain.
+5. **CPU Query Supervision Audit DONE（2026-08-18 `QUERY_COPY_IS_SUPERVISION_INDUCED`）.** Artifact: `Dee/results/32_audit_sft_query_supervision/`. 4550 mix unchanged (`internal=950`, `search_format=1250`, `evidence=1150`, `evidence_reasoning=1200`). All **1250/1250** `search_format` targets have `search_query == original_question` (`exact_copy_rate=1.0`, `normalized_copy_rate=1.0`, `non_copy_rate=0.0`, length ratio=1.0, `query_source=question_copy`). `query_diversity=0` is **supervision-induced**, not a sampling bug. Stop all temperature / top_p / round-specific sampling work.
+6. **Frozen Gate 3.5 verdict: `GATE35_GRPO_READY_WITH_QUERY_LIMITATION`.** Hard keep only: finish≥0.95, parse≥0.95, group reward-std nonzero ≥0.30, nonzero advantage ≥0.20, route diversity observed (32×8 = 0.53). `conditional_query_diversity` and `search_2` are **capability limits**, not GRPO-v1 hard doors. Record them; do not block training.
+7. Reward stays `R_answer + 0.5 R_evidence + 0.1 R_format`. `cost λ = 0`. Frozen: SFT ckpt, 4550, Teacher, BM25 top-5, Harness v1, vLLM completions. Gate 4 sampling restores **T=0.7 / top_p=0.95**.
+
+**GRPO v1 may claim:** routing, evidence use, answer.  
+**GRPO v1 must not claim:** query reformulation, multi-hop / second search. Those are GRPO-v2 / enhancement.
 
 Project target after later GRPO (not this gate): Answer F1 ≥ 0.70 or Δ ≥ +0.03 vs SFT; Evidence F1 clearly > 0.50; finish ≥ 0.95.
 
@@ -385,7 +389,32 @@ question → n=4 on-policy rollout → tool + Candidate-BM25
   → FSDP checkpoint → GRPO_SEGMENT_PASS step=1
 ```
 
-Missing any link is FAIL. No new cost-aware routing.
+Missing any link is FAIL. No new cost-aware routing. Sampling for this smoke: **temperature=0.7, top_p=0.95** (restore Gate 3.5 32×8 baseline; do not use Trial C). Judge only `optimizer_step=1` + checkpoint + no NaN/OOM. Ignore F1. Query diversity is not a Gate 4 fail.
+
+**DONE 2026-08-18 `GRPO_SEGMENT_PASS step=1`.** Artifact: `Dee/results/33_gate4_grpo_1step/gate4_summary.json`. Wall 2073s (gen 1817s, update_actor 39s, save 167s). Reward mean/max/min 0.286/1.10/0.10; advantage not all-zero; Exact pearson 0.976; `grad_norm=1.05`; aborted=0. Teardown printed a DataLoader `Killed` then `GRPO_EXIT=0`. Do not read F1.
+
+---
+
+## SGLang Probability Audit (Step A) — PASS
+
+**DONE 2026-08-18 `SGLANG_PROB_AUDIT_PASS`.** Artifact: `Dee/results/34_sglang_prob_audit/sglang_prob_summary.json`.
+
+8 prompts × n=4, `val_only`, no backward, inside historical `eca-verl` (SGLang 0.5.5, TF 4.57.1). Weights = official merge `outputs/22_sft_qwen3_8b_merged` via `model_view` (relative symlinks: 22_ shards + `Dee/model` tokenizer/config). Do not mutate `22_`. Do not edit `07_run_evidence_grpo.sh`.
+
+3B-era “SGLang search-prob=0” **does not hold** on current 8B SFT + Harness v1.
+
+| Metric | Value |
+|---|---|
+| n | 32 |
+| search_rate | 0.375 (12/32) |
+| finish | 1.0 |
+| missing / nonfinite μ | 0 / 0 |
+| mean / median \|Δlogp\| | 0.005554 / 1.2e-5 |
+| p95 / p99 / max \|Δlogp\| | 0.023 / 0.127 / 0.49 |
+| ρ mean / p01 / max | 0.997 / 0.90 / 1.64 |
+| ESS (token) | 4453 / 4457 = **0.999** |
+
+Verdict: μ vs π is a **correctable mismatch** (`SGLANG_MISMATCH_MILD`), not `π/0` support failure. Token-level truncated IS is in-principle valid. Sequence IS is not the first choice. Honest claim if adopted: VeXact = Exact correctness anchor; formal scale = SGLang + explicit correction. Do not call formal SGLang+IS training “Exact”.
 
 ---
 
@@ -521,4 +550,4 @@ Web: PAUSED
 30B project tree: DELETE (not a runtime source)
 ```
 
-Next authorized action: **round-specific sampling design** (turn-0 higher T, post-tool lower T). Global T/top_p sweep is closed (`STOP_SWEEP`). No T≥1.5, no SFT retrain, no reward/BM25/Harness edits, no Gate 4 until `conditional_query_diversity_rate ≥ 0.20`.
+Gate 4 **`GRPO_SEGMENT_PASS step=1`**. Step A **`SGLANG_PROB_AUDIT_PASS`**. VeXact 20-step remains **paused** (34.5 min/step). Next authorized action (await confirm): **Step B 1-step Token-TIS** on the same 8×4, or PLAN-only. Do not edit `07_run_evidence_grpo.sh`. Do not claim formal SGLang+IS is Exact.

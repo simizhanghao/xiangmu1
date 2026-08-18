@@ -2,7 +2,7 @@
 
 冻结总计划（唯一执行线）：[PLAN.md](PLAN.md)。
 
-**当前进度（2026-08-18）：** Gate 3 **`GATE3_TARGET_PASS`**；vLLM↔HF **`VLLM_HF_PARITY_PASS`**；Gate 3.5 32×8 **`GATE35_UNDEREXPLORE`**。Gate 3.5B 三档采样 **`STOP_SWEEP`**：T=0.9 / 1.1 / 1.1+top_p=1.0 都保持协议和奖励健康，但 `conditional_query_diversity_rate=0`、`exact_question_copy_rate=1.0`。不要再升全局温度。不要重训 SFT。Next: 回合级温度（第 0 轮高、工具后低）。未过 query 门之前不进 Gate 4。
+**当前进度（2026-08-18）：** Gate 4 **`GRPO_SEGMENT_PASS step=1`**。Step A **`SGLANG_PROB_AUDIT_PASS`**（search=0.375，μ 有限，mean\|Δlogp\|=0.0056，ESS=0.999）。VeXact 20-step 仍暂缓。Next（待确认）：Step B 1-step Token-TIS。不改 BM25 / query / `07_run_evidence_grpo.sh`。
 
 ## 项目目标
 

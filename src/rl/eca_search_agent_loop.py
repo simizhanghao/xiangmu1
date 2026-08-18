@@ -775,6 +775,13 @@ class EcaSearchAgentLoop(AgentLoopBase):
                 "max_observation_turn_tokens": int(metrics["max_observation_turn_tokens"]),
                 "max_search_turns": int(self.max_search_turns),
                 "max_assistant_turns": int(self.max_assistant_turns),
+                "prompt_ids": prompt_ids_out,
+                "response_ids": response_ids[: self.response_length],
+                "response_mask": response_mask[: self.response_length],
+                "response_logprobs": (
+                    response_logprobs[: self.response_length] if response_logprobs else None
+                ),
+                "backend": f"{_rollout_backend()}_eca_search_agent_loop",
             }
         )
         if _audit_enabled() and not _audit_first_generate_only():
