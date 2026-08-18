@@ -2,7 +2,7 @@
 
 冻结总计划（唯一执行线）：[PLAN.md](PLAN.md)。
 
-**当前进度（2026-08-18）：** Gate 4 **`GRPO_SEGMENT_PASS step=1`**。Step A **`SGLANG_PROB_AUDIT_PASS`**（search=0.375，μ 有限，mean\|Δlogp\|=0.0056，ESS=0.999）。VeXact 20-step 仍暂缓。Next（待确认）：Step B 1-step Token-TIS。不改 BM25 / query / `07_run_evidence_grpo.sh`。
+**当前进度（2026-08-18）：** Step B **`SGLANG_TOKEN_TIS_1STEP_PASS`**（step 222s vs Gate 4 2073s，ESS=0.9999，clamp=0）。正式路线是 **SGLang + 官方 Decoupled Token-TIS**；VeXact 只作 Exact 锚。Next：Gate 5 = 20-step Token-TIS，`lr=1e-6`，仍 32×4。不改 `07_run_evidence_grpo.sh`。不要把正式训练叫 Exact。
 
 ## 项目目标
 
@@ -16,11 +16,23 @@
 Qwen3-8B (dense, non-thinking)
   → LoRA SFT（8B-aligned coldstart v2，1200 DeepSeek rationale）
   → Merge BF16 HF model
-  → Evidence GRPO（Exact VeXact + Candidate-BM25，GPU Adam）
-  → 20-step throughput gate
-  → frozen dev @ 200/400/600/800
+  → Gate 4 Exact VeXact 1-step（正确性锚，已 PASS）
+  → Step A/B：SGLang μ/π audit + Decoupled Token-TIS 1-step（已 PASS）
+  → Gate 5：SGLang + Token-TIS 20-step
+  → frozen-dev@200 vs SFT，再 200→400→600→800
   → 唯一 best checkpoint
 ```
+
+## 2026-08-18 新结果（Gate 4 → Step B）
+
+| 门 | 判定 | 关键数字 |
+|---|---|---|
+| Gate 3 frozen-dev@200 | 已锁 | SFT Agent F1 **0.6649** / EM 0.54；Base RAG 0.6659 / 0.57 |
+| Gate 4 Exact 1-step | `GRPO_SEGMENT_PASS` | step **2073s**（gen 1817s）；reward 0.286；Exact pearson 0.976 |
+| Step A SGLang μ/π | `SGLANG_PROB_AUDIT_PASS` | search 0.375；ESS **0.999**；ρ mean 0.997；mild mismatch |
+| Step B Token-TIS 1-step | `SGLANG_TOKEN_TIS_1STEP_PASS` | step **222s（9.3×）**；ESS 0.9999；clamp 0；IS max 1.27 |
+
+正式训练是 **Exact-validated, rollout-corrected Agentic GRPO**，不要叫 Exact。VeXact 只作锚，不再跑 20-step / 200–800。摘要：`results/33_gate4_grpo_1step/gate4_summary.json`、`results/34_sglang_prob_audit/sglang_prob_summary.json`、`results/35_sglang_token_tis_1step/stepb_summary.json`。
 
 ## 已冻结的实验定义
 
@@ -28,12 +40,14 @@ Qwen3-8B (dense, non-thinking)
 - SFT：ShareGPT coldstart_v2（4550，`sharegpt_filled.jsonl`），2 epochs，LoRA rank 32，effective global batch 64。旧 v1 仅历史对照。
 - RL smoke：当前 128/16 parquet **只用于 Gate 4/5**，不是最终训练集。
 - 正式 GRPO：Gate 5.5 构建约 **5,000** HotpotQA questions；fast-dev 200 + formal-dev 1000。
-- RL 算法：Evidence GRPO，`lambda_e=0.5`、LR `1e-6`、`temperature=0.9`、`top_p=0.95`、`n=4`。
-- Environment：Candidate-BM25 top-5、同一 `EcaSearchAgentLoop`、Exact VeXact。
-- Memory：actor param/optimizer offload = false；rollout PP=4；`max_model_len=8192`。
+- RL 算法：Evidence GRPO，`R = EM + 0.5 Evidence + 0.1 Format`，`lambda_e=0.5`、cost λ=0、正式 LR `1e-6`、**T=0.7 / top_p=0.95**、batch 32、`n=4`。
+- Rollout：正式路径 **SGLang 0.5.5 + 官方 Decoupled Token-TIS**（`rollout_is=token`，threshold=2.0，无 RS，无 bypass）。Exact VeXact 只作 1-step 正确性锚。
+- Environment：Candidate-BM25 top-5、同一 `EcaSearchAgentLoop`、Harness v1。
+- Memory：actor param/optimizer offload = false。Exact 锚用 PP=4；正式 SGLang 用 TP=1。
 - Budget：正式终点 200/400/600/800；1000 不是 KPI。
 - 选模：先过 finish/format/observation-mask health gate，再按 Answer F1、Evidence F1、EM、少重复 query、较早 checkpoint。
 - Test：在唯一 best 冻结前禁止打开 sealed HotpotQA Test。
+- 能力边界：GRPO v1 可声称 routing / evidence / answer；**不可**声称 query reformulation 或 multi-hop。
 
 ## 目录
 

@@ -550,4 +550,51 @@ Web: PAUSED
 30B project tree: DELETE (not a runtime source)
 ```
 
-Gate 4 **`GRPO_SEGMENT_PASS step=1`**. Step A **`SGLANG_PROB_AUDIT_PASS`**. VeXact 20-step remains **paused** (34.5 min/step). Next authorized action (await confirm): **Step B 1-step Token-TIS** on the same 8×4, or PLAN-only. Do not edit `07_run_evidence_grpo.sh`. Do not claim formal SGLang+IS is Exact.
+Gate 4 **`GRPO_SEGMENT_PASS step=1`**. Step A **`SGLANG_PROB_AUDIT_PASS`**.
+
+**Formal path (locked 2026-08-18):** VeXact is the **Exact correctness anchor only**. Do **not** run VeXact 20-step / 200–800. Formal candidate is **SGLang + official Decoupled Token-TIS**. IS does not “turn μ back into π”; it reweights SGLang trajectories so gradients estimate updates under π. Reward / group advantage / BM25 / Harness / 4550 stay frozen. Do not edit `07_run_evidence_grpo.sh`. Do not claim formal SGLang+TIS is Exact. Do not enable SGLang deterministic inference or upgrade 0.5.5 in this step.
+
+```text
+Gate 4 Exact VeXact 1-step     PASS
+Step A SGLang μ/π audit        PASS   (search=0.375, ESS=0.999)
+Step B SGLang + Token-TIS 1-step   PASS
+Gate 5 SGLang+TIS 20-step      NEXT
+Formal 200→800                 after Gate 5 + frozen-dev@200
+```
+
+---
+
+## Step B — 1-step SGLang + Decoupled Token-TIS
+
+Apples-to-apples vs Gate 4. Only two algorithm changes: rollout `VeXact → SGLang`, correction `OFF → Decoupled Token-TIS`.
+
+Frozen with Gate 4: SFT `22_` merge, batch 32, n 4, T=0.7, top_p=0.95, Harness v1, BM25 top-5, `R = EM + 0.5 Evidence + 0.1 Format`, clip 0.2, actor KL 0.001, smoke `lr=1e-8`. Do not drop batch. Do not add RS. Do not set `bypass_mode=true` (old-logprob was 11s; the 1817s rollout is the bottleneck).
+
+Official keys (verl docs):
+
+```text
+algorithm.rollout_correction.rollout_is=token
+algorithm.rollout_correction.rollout_is_threshold=2.0
+algorithm.rollout_correction.rollout_rs=null
+algorithm.rollout_correction.bypass_mode=false
+actor_rollout_ref.rollout.calculate_log_probs=true
+```
+
+`eca-verl` already contains official files (`verl/trainer/config/algorithm.py`, `rollout_corr_helper.py`, tests). Launch: `scripts/run_sglang_token_tis_1step.sh`. Confirm `decoupled_token_is()` imports before starting the 1-step. Do not hand-write IS loss.
+
+**DONE 2026-08-18 `SGLANG_TOKEN_TIS_1STEP_PASS`.** Artifact: `Dee/results/35_sglang_token_tis_1step/stepb_summary.json`. Launch: `scripts/run_sglang_token_tis_1step.sh`.
+
+| Metric | Gate 4 Exact | Step B SGLang+TIS |
+|---|---:|---:|
+| step wall | 2073s | **222s (9.3×)** |
+| gen | 1817s | **54s** |
+| old_log_prob / ref / update | 11 / 10 / 39s | 6 / 52 / 22s |
+| reward mean / max / min | 0.286 / 1.10 / 0.10 | 0.281 / 1.10 / 0.10 |
+| IS mean / ESS / clamp | n/a (Exact) | **0.9999 / 0.9999 / 0** |
+| IS max | n/a | 1.27 (threshold 2.0) |
+| pearson / μ valid | 0.976 / 1.0 | 0.998 / 1.0 |
+| grad_norm / aborted | 1.05 / 0 | 0.59 / 0 |
+
+GREEN: optimizer_step=1, ckpt `global_step_1`, 100% finite μ, IS mean≈1, ESS≥0.90, clamp=0, no toxic tail, no NaN/OOM. Speed far above 2×. Do **not** call this Exact.
+
+Next (user confirm): Gate 5 is **20-step SGLang+TIS** at `lr=1e-6`, still 32×4. No new audits. Watch reward / evidence / search-rate / ESS drift. Upgrade to RS only if a toxic tail appears; stop if ESS collapses (<0.5 diagnose; official severe <0.3). Then frozen-dev@200 vs SFT 0.6649 / Evidence ~0.50 — do not require F1>0.70 at 20 steps; require no collapse + upward reward/evidence. Formal claim: **Exact-validated, rollout-corrected Agentic GRPO**.

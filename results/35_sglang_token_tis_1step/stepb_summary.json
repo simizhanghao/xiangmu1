@@ -1,0 +1,64 @@
+{
+  "gate": "SGLANG_TOKEN_TIS_1STEP_PASS",
+  "step": 1,
+  "exit": 0,
+  "log": "/data1/hcc/deepresearch/Dee/results/35_sglang_token_tis_1step/run.log",
+  "tmux_log": "/data1/hcc/deepresearch/Dee/logs/sglang_token_tis_1step_20260818_134841.log",
+  "checkpoint": "/data1/hcc/deepresearch/Dee/results/35_sglang_token_tis_1step/ckpt/global_step_1",
+  "policy": "/data1/hcc/deepresearch/Dee/outputs/22_sft_qwen3_8b_merged",
+  "backend": "sglang",
+  "correction": {
+    "rollout_is": "token",
+    "rollout_is_threshold": 2.0,
+    "rollout_rs": null,
+    "bypass_mode": false,
+    "loss_type": "ppo_clip"
+  },
+  "note": "Apples-to-apples vs Gate 4. Formal path is rollout-corrected, not Exact.",
+  "timing_s": {
+    "gen": 53.62,
+    "old_log_prob": 6.39,
+    "ref": 52.08,
+    "adv": 0.34,
+    "update_actor": 22.12,
+    "save_checkpoint": 57.72,
+    "update_weights": 7.64,
+    "step": 221.88
+  },
+  "vs_gate4_step_s": 2072.59,
+  "speedup_vs_gate4": 9.34,
+  "reward": {
+    "mean": 0.2812,
+    "max": 1.1,
+    "min": 0.1,
+    "formula": "EM + 0.5*EvidenceF1 + 0.1*Format",
+    "lambda_s": 0.0
+  },
+  "actor": {
+    "pg_loss": -0.0718,
+    "kl_loss": 5.48e-05,
+    "grad_norm": 0.590,
+    "entropy": 0.0232,
+    "pg_clipfrac": 0.00022,
+    "lr": 1e-8
+  },
+  "rollout_corr": {
+    "is_mean": 0.99991,
+    "is_max": 1.269,
+    "is_min": 0.629,
+    "ess": 0.99988,
+    "clamp_high": 0.0,
+    "clamp_low": 0.0,
+    "pearson": 0.99797,
+    "probs_diff_valid": 1.0,
+    "probs_diff_mean": 0.000614
+  },
+  "traj": {
+    "aborted_ratio": 0.0,
+    "num_turns_mean": 5.07,
+    "num_turns_min": 4,
+    "num_turns_max": 9,
+    "response_len_mean": 495.16,
+    "response_len_clip_ratio": 0.0078
+  }
+}

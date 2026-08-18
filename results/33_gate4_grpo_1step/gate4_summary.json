@@ -1,0 +1,52 @@
+{
+  "gate": "GRPO_SEGMENT_PASS",
+  "step": 1,
+  "exit": 0,
+  "log": "/data1/hcc/deepresearch/Dee/logs/grpo_smoke_to1_20260818_103419.log",
+  "checkpoint": "/data1/hcc/deepresearch/Dee/artifacts/evidence_grpo_smoke_ckpt/global_step_1/actor/huggingface",
+  "policy": "/data1/hcc/deepresearch/Dee/outputs/22_sft_qwen3_8b_merged",
+  "note": "1-step smoke. Do not read F1. Query diversity not a fail.",
+  "timing_s": {
+    "gen": 1817.39,
+    "old_log_prob": 10.72,
+    "ref": 9.75,
+    "adv": 0.25,
+    "update_actor": 39.45,
+    "save_checkpoint": 167.48,
+    "update_weights": 4.55,
+    "step": 2072.59
+  },
+  "reward": {
+    "mean": 0.2857,
+    "max": 1.1,
+    "min": 0.1,
+    "formula": "EM + 0.5*EvidenceF1 + 0.1*Format",
+    "lambda_s": 0.0
+  },
+  "advantage": {"mean": 0.0148, "max": 1.5, "min": -1.5},
+  "actor": {
+    "pg_loss": -0.00216,
+    "kl_loss": 5.74e-05,
+    "approx_kl": -3.3e-05,
+    "grad_norm": 1.05,
+    "entropy": 0.0239,
+    "pg_clipfrac": 0.00013,
+    "lr_logged": 0.0,
+    "lr_configured": 1e-8
+  },
+  "exact": {
+    "rollout_probs_diff_valid": 1.0,
+    "pearson": 0.9756,
+    "rollout_probs_diff_mean": 0.00405,
+    "off_policy_staleness": 0.0
+  },
+  "traj": {
+    "aborted_ratio": 0.0,
+    "num_turns_mean": 5.1875,
+    "num_turns_min": 4,
+    "num_turns_max": 8,
+    "response_len_mean": 511.0,
+    "response_len_clip_ratio": 0.0078
+  },
+  "teardown": "DataLoader worker Killed during exit; wrapper still GRPO_EXIT=0"
+}
