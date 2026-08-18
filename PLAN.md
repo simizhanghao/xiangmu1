@@ -346,8 +346,27 @@ Inference backend after this gate: **vLLM** (generate only). Harness v1 prompt/p
 Do **not** enter 5K GRPO or even 1-step update until this passes.
 
 1. **n=8 vLLM ↔ HF Harness v1 parity**（2026-08-17 `VLLM_HF_PARITY_PASS`）. Image `vllm/vllm-openai:latest` serve + `/v1/completions`. Same 8 IDs: empty-think=0, no `<observation>`, no extra Continue, finish 1.0, search 0.875, F1 0.75 / Evidence 0.7417, route/query/finish agree 8/8. Official Gate 3 remains HF@200 F1=0.6649.
-2. **Rollout-only exploration** (no backward). Stochastic sampling, group size >1, 32–128 prompts. Require reward variance > 0 and diverse route/query/evidence. If all rollouts collapse to the same query+answer: **STOP**, retune sampling, do not GRPO.
-3. First GRPO reward stays `R_answer + 0.5 R_evidence + 0.1 R_format`. `cost λ = 0`. Do not reward search count. Do not add second-search bonus.
+2. **32×8 T=0.7 / top_p=0.95**（2026-08-17 `GATE35_UNDEREXPLORE`）. Artifact: `Dee/results/28_gate35_exploration_32x8/`. 256/256, finish=1.0, parse=1.0, group reward-std nonzero **0.75**, nonzero advantage **0.75**, route diversity **0.53**. `query_diversity=0`, `p_search_2=0`. Reward is healthy. Residual is **search-query peakedness**, not SFT failure and not a flat reward.
+3. Read-only query audit (2026-08-17): `query_diversity=0` is **not** a stats bug (exact string set, no normalize). Searchable groups copy the **full question** as the query. Route still flips internal/search. Do not retrain SFT.
+4. **Gate 3.5B — global T/top_p sweep DONE（2026-08-18 `STOP_SWEEP`）.** Same first 16 smoke IDs × 8, seed 42, one knob at a time. Artifacts: `29_gate35b_trial_a_16x8`, `30_gate35b_trial_b_16x8`, `31_gate35b_trial_c_16x8`.
+
+| | A T=0.9 p=.95 | B T=1.1 p=.95 | C T=1.1 p=1.0 |
+|---|---:|---:|---:|
+| n | 128 | 128 | 128 |
+| finish / parse | 1.0 / 1.0 | 1.0 / 1.0 | 0.992 / 1.0 |
+| empty think / obs / Continue | 0 | 0 | 0 |
+| group reward-std nonzero | 0.75 | 0.81 | 0.94 |
+| nonzero advantage | 0.74 | 0.81 | 0.94 |
+| route diversity | 0.56 | 0.63 | 0.63 |
+| **conditional query div** | **0** | **0** | **0** |
+| **exact question copy** | **1.0** | **1.0** | **1.0** |
+| unique query / searchable group | 1.0 | 1.0 | 1.0 |
+| search_2 | 0 | 0 | 0 |
+| branch | TRIAL_B | TRIAL_C | **STOP_SWEEP** |
+
+Raising T/top_p only opened **route** (and reward variance). Search query stayed a **byte-identical question copy**. Do **not** try T≥1.5. Official 32×8 recheck is blocked until query exploration opens by another method. Next layer (not this commit): turn-0 higher T, post-tool lower T. Still no SFT retrain.
+5. **Hard keep:** finish≥0.95, parse≥0.95, group reward-std nonzero ≥0.30, nonzero advantage ≥0.20. **New query hard door** (only groups with ≥2 search rollouts): `conditional_query_diversity_rate ≥ 0.20` (target 0.30); record `mean_unique_queries_per_searchable_group` (want >1.2). Useful paraphrase diversity, not noise. `search_2` is observed, **not** a hard fail. No second-search bonus, no force-2-search.
+6. Reward stays `R_answer + 0.5 R_evidence + 0.1 R_format`. `cost λ = 0`. Frozen: SFT ckpt, 4550, Teacher, BM25 top-5, Harness v1, vLLM completions. Only `temperature` / `top_p` may change until official Gate 3.5 PASS.
 
 Project target after later GRPO (not this gate): Answer F1 ≥ 0.70 or Δ ≥ +0.03 vs SFT; Evidence F1 clearly > 0.50; finish ≥ 0.95.
 
@@ -502,4 +521,4 @@ Web: PAUSED
 30B project tree: DELETE (not a runtime source)
 ```
 
-Next authorized action: **Gate 3.5 rollout-only exploration audit**. No SFT retrain, no BM25 change, no 5K GRPO, no 1-step update until reward variance > 0.
+Next authorized action: **round-specific sampling design** (turn-0 higher T, post-tool lower T). Global T/top_p sweep is closed (`STOP_SWEEP`). No T≥1.5, no SFT retrain, no reward/BM25/Harness edits, no Gate 4 until `conditional_query_diversity_rate ≥ 0.20`.

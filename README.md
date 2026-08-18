@@ -2,7 +2,7 @@
 
 冻结总计划（唯一执行线）：[PLAN.md](PLAN.md)。
 
-**当前进度（2026-08-17）：** 正式 Gate 3 frozen-dev@200 **`GATE3_TARGET_PASS`**；vLLM↔HF n=8 **`VLLM_HF_PARITY_PASS`**。Harness v1 + `vllm/vllm-openai` `/v1/completions` 已冻结。SFT 已复现 RAG，尚未超过 RAG。Next: Gate 3.5 rollout-only exploration。不要重训 SFT，不要改 BM25，不要直接 5K GRPO。
+**当前进度（2026-08-18）：** Gate 3 **`GATE3_TARGET_PASS`**；vLLM↔HF **`VLLM_HF_PARITY_PASS`**；Gate 3.5 32×8 **`GATE35_UNDEREXPLORE`**。Gate 3.5B 三档采样 **`STOP_SWEEP`**：T=0.9 / 1.1 / 1.1+top_p=1.0 都保持协议和奖励健康，但 `conditional_query_diversity_rate=0`、`exact_question_copy_rate=1.0`。不要再升全局温度。不要重训 SFT。Next: 回合级温度（第 0 轮高、工具后低）。未过 query 门之前不进 Gate 4。
 
 ## 项目目标
 

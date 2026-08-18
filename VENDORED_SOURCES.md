@@ -19,6 +19,8 @@
 | `src/tools/candidate_bm25.py` | 同路径 | BM25 排序和 observation 格式 |
 | `scripts/run_agent_rollout_smoke.py` | 同路径 | frozen-dev 入口；`--backend hf\|vllm\|vllm_openai` |
 | `scripts/audit_vllm_hf_parity.py` | 同路径 | n=8 vLLM↔HF 协议门 |
+| `scripts/audit_gate35_exploration.py` | 同路径 | Gate 3.5 / 3.5B rollout-only；conditional query / question-copy |
+| `scripts/run_gate35_exploration.sh` | 同路径 | 独立 `docker -d` vLLM + 16/32×8 启动 |
 | `scripts/start_candidate_retrieval_server.py` | 同路径 | retriever 入口 |
 | `config/rl/*` | `configs/rl/*` | tool/AgentLoop Hydra 注册 |
 
