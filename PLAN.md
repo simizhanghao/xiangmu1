@@ -418,18 +418,49 @@ Verdict: μ vs π is a **correctable mismatch** (`SGLANG_MISMATCH_MILD`), not `�
 
 ---
 
-## Gate 5 — 20-step throughput
+## Gate 5 — 20-step SGLang + Decoupled Token-TIS
 
-`1-step` = correctness. `20-step` = engineering feasibility.
-Ignore step 1–2 (load / compile / Ray / VeXact warmup). Use **median step wall time** after warmup.
+**Locked 2026-08-18.** VeXact stays the Exact correctness anchor. Formal training is **SGLang + official Decoupled Token-TIS**. This is not “speed over correctness”: Gate 4 proved the GRPO chain; Step A showed mild μ/π mismatch; Step B applied official token-TIS (`π_old / π_rollout`) and stayed GREEN. Do not further tune the backend. Launch: `scripts/run_sglang_token_tis_20step.sh`. Smoke parquet is 128 prompts / batch 32 → **4 steps/epoch**; `total_epochs` must be ≥20 so `total_training_steps=20` can finish (same reason `07` uses `total_epochs=800`). Do not edit `07_run_evidence_grpo.sh`.
 
-| Median min/step | Color | Action |
-|---|---|---|
-| `<= 3.2` | GREEN | Approve 200→400→600→800 |
-| `3.2–3.6` | YELLOW | Do not promise 800 in 48h; deliver 600 first |
-| `> 3.6` | RED | Stop betting 8B throughput; Qwen3-4B fallback |
+20-step validates **continuous stability after raising lr 1e-8 → 1e-6**, not F1≥0.70. After PASS: frozen-dev@200 vs SFT, then formal 200→400→600→800 on 5K.
 
-Do not reopen “maybe it will get faster if we keep tuning.”
+Frozen (do not change any of these in this gate):
+
+```text
+policy = 22_ SFT merge
+rollout = SGLang async multi-turn
+batch=32 n=4  → 128 traj/step
+T=0.7 top_p=0.95 top_k=-1
+R = EM + 0.5 EvidenceF1 + 0.1 Format   cost λ=0
+Harness v1 + Candidate-BM25 top-5   max_search_turns=2
+Token-TIS threshold=2.0   RS=OFF   bypass=OFF
+lr=1e-6
+```
+
+Do **not** change batch / reward / T / BM25 / query; do **not** add RS, bypass, Sequence IS, query-rewrite, or SFT retrain.
+
+Watch four groups. Soft drift is OK. Hard-stop only: nonfinite μ, support loss, ESS collapse, mass clamp, NaN, OOM.
+
+1. Reward trend (not monotonic): `R_answer` not collapse, `R_evidence` up, `R_total` up. SFT baseline Answer F1 0.6649 / Evidence ~0.50 — Evidence is the main headroom.
+2. IS health (record every step). Official alarms: ESS<0.3, IS std>1, IS mean<0.5 or >2, |corr KL|>0.1, chi2_token>1. ESS 0.999→0.94 is **not** a stop.
+3. Agent behavior: finish/parse, search vs internal, search_2, dup query, length/trunc. search_rate→0 or →1 is collapse. search_2=0 does **not** block GRPO-v1.
+4. Throughput: median of **steps 3–20**. Accept ~3–4 min/step. Do not optimize 30s.
+
+After 20 steps, eval **frozen-dev@200** on the verified vLLM deterministic path (not train reward). PASS if no collapse (Answer ~SFT and Evidence/reward not down). Modest Evidence-only gains still continue. Collapse (e.g. Answer 0.665→0.55) stops the line.
+
+**DONE 2026-08-18 `SGLANG_TOKEN_TIS_20STEP_PASS`.** Artifact: `Dee/results/36_sglang_token_tis_20step/gate5_summary.json`. Second launch used `total_epochs=20` (first launch stopped at 4 steps because 128/32=4). Progress bar **20/20 in 45.3 min** (mean 136s/it). ckpt `global_step_10` and `global_step_20`.
+
+| | step 1 | step 20 | 3–20 median |
+|---|---:|---:|---:|
+| reward mean | 0.281 | **0.378** | last-4 mean **0.400** |
+| ESS | 0.9999 | 0.9999 | min **0.99980** |
+| IS mean / max | 1.00 / 1.30 | 1.00 / 1.89 | peak IS max=2.0, clamp ≤2e-5 |
+| gen / step wall | 46s / 155s | 50s / 171s (incl. save) | **~66s / 136s (2.3 min)** |
+| aborted / μ valid | 0 / 1.0 | 0 / 1.0 | always |
+
+Reward on the 128 smoke set rose 0.28→~0.38 and did **not** collapse. IS stayed GREEN vs official alarms (ESS<0.3, IS std>1, |KL|>0.1, chi2>1). Length/turns rose mid-run (len 482→820, turns 5.1→6.0) then eased (672 / 5.55). Entropy 0.023→0.013. This is **5 epochs of the same 128 prompts** — do **not** read F1, do **not** call it formal GRPO.
+
+Next: frozen-dev@200 on vLLM det path vs SFT 0.6649 / Evidence ~0.50, then Gate 5.5 5K, then 200→800. Skip more backend tuning.
 
 ---
 
@@ -558,8 +589,8 @@ Gate 4 **`GRPO_SEGMENT_PASS step=1`**. Step A **`SGLANG_PROB_AUDIT_PASS`**.
 Gate 4 Exact VeXact 1-step     PASS
 Step A SGLang μ/π audit        PASS   (search=0.375, ESS=0.999)
 Step B SGLang + Token-TIS 1-step   PASS
-Gate 5 SGLang+TIS 20-step      NEXT
-Formal 200→800                 after Gate 5 + frozen-dev@200
+Gate 5 SGLang+TIS 20-step      PASS
+Formal 200→800                 after frozen-dev@200 + 5K
 ```
 
 ---
@@ -597,4 +628,4 @@ actor_rollout_ref.rollout.calculate_log_probs=true
 
 GREEN: optimizer_step=1, ckpt `global_step_1`, 100% finite μ, IS mean≈1, ESS≥0.90, clamp=0, no toxic tail, no NaN/OOM. Speed far above 2×. Do **not** call this Exact.
 
-Next (user confirm): Gate 5 is **20-step SGLang+TIS** at `lr=1e-6`, still 32×4. No new audits. Watch reward / evidence / search-rate / ESS drift. Upgrade to RS only if a toxic tail appears; stop if ESS collapses (<0.5 diagnose; official severe <0.3). Then frozen-dev@200 vs SFT 0.6649 / Evidence ~0.50 — do not require F1>0.70 at 20 steps; require no collapse + upward reward/evidence. Formal claim: **Exact-validated, rollout-corrected Agentic GRPO**.
+Gate 5 is now the only main task: 20-step at `lr=1e-6`, still 32×4. No new backend audits. Watch reward / evidence / search-rate / ESS drift; do not stop for mild ESS drift. Then frozen-dev@200 vs SFT 0.6649 / Evidence ~0.50 — do not require F1>0.70 at 20 steps; require no collapse. Formal claim: **Exact-validated, rollout-corrected Agentic GRPO**.

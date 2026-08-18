@@ -1,0 +1,53 @@
+{
+  "gate": "SGLANG_TOKEN_TIS_20STEP_PASS",
+  "steps": 20,
+  "lr": 1e-6,
+  "batch": 32,
+  "n": 4,
+  "note": "Stability+throughput on 128 smoke set (5 epochs). Do not read F1. Not the formal 5K run.",
+  "ckpt": "results/36_sglang_token_tis_20step/ckpt/global_step_20",
+  "metrics": "results/36_sglang_token_tis_20step/gate5_step_metrics.jsonl",
+  "progress_wall_s": 2718.8,
+  "reward": {
+    "step1": 0.281,
+    "step20": 0.378,
+    "last4_mean": 0.400,
+    "min_step_mean": 0.281,
+    "max_step_mean": 0.418,
+    "formula": "EM + 0.5*EvidenceF1 + 0.1*Format"
+  },
+  "is": {
+    "ess_min": 0.99980,
+    "ess_max": 0.99994,
+    "is_mean_range": [0.99991, 1.00006],
+    "is_max_peak": 2.0,
+    "clamp_peak": 2.1e-5,
+    "kl_peak": 0.00021,
+    "chi2_token_peak": 0.00035
+  },
+  "timing_s": {
+    "progress_mean_it": 135.94,
+    "median_step_3_to_20": 136.5,
+    "median_gen_approx": 66,
+    "ref_steady": 25.3,
+    "update_actor_steady": 21
+  },
+  "behavior": {
+    "aborted_all": 0.0,
+    "mu_valid_all": 1.0,
+    "response_len_step1": 482,
+    "response_len_peak": 820,
+    "response_len_step20": 672,
+    "turns_step1": 5.11,
+    "turns_peak": 6.05,
+    "turns_step20": 5.55,
+    "entropy_step1": 0.023,
+    "entropy_step20": 0.013
+  },
+  "per_step_reward": [
+    0.281, 0.411, 0.333, 0.352, 0.346,
+    0.345, 0.385, 0.307, 0.351, 0.380,
+    0.301, 0.361, 0.330, 0.400, 0.381,
+    0.315, 0.394, 0.418, 0.408, 0.378
+  ]
+}
