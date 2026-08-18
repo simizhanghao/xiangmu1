@@ -458,9 +458,20 @@ After 20 steps, eval **frozen-dev@200** on the verified vLLM deterministic path 
 | gen / step wall | 46s / 155s | 50s / 171s (incl. save) | **~66s / 136s (2.3 min)** |
 | aborted / μ valid | 0 / 1.0 | 0 / 1.0 | always |
 
-Reward on the 128 smoke set rose 0.28→~0.38 and did **not** collapse. IS stayed GREEN vs official alarms (ESS<0.3, IS std>1, |KL|>0.1, chi2>1). Length/turns rose mid-run (len 482→820, turns 5.1→6.0) then eased (672 / 5.55). Entropy 0.023→0.013. This is **5 epochs of the same 128 prompts** — do **not** read F1, do **not** call it formal GRPO.
+Reward on the 128 smoke set rose 0.28→~0.38 and did **not** collapse. IS stayed GREEN vs official alarms (ESS<0.3, IS std>1, |KL|>0.1, chi2>1). Length/turns rose mid-run (len 482→820, turns 5.1→6.0) then eased (672 / 5.55). Entropy 0.023→0.013. This is **5 epochs of the same 128 prompts** — do **not** read F1 from train reward, do **not** call it formal GRPO.
 
-Next: frozen-dev@200 on vLLM det path vs SFT 0.6649 / Evidence ~0.50, then Gate 5.5 5K, then 200→800. Skip more backend tuning.
+**DONE 2026-08-18 `SMOKE20_FROZEN_DEV200_NO_COLLAPSE`.** Artifact: `Dee/results/38_frozen_dev_grpo_smoke20/smoke20_dev200_summary.json`. Same 200 IDs, Harness v1, Candidate-BM25@5, **vLLM det** (`dee-vllm-grpo20`, T=0). 200/200 in 458s. finish=1.0, parse=1.0, observation mask=1.0.
+
+| Model | Answer F1 | EM | Evidence F1 | search |
+|---|---:|---:|---:|---:|
+| SFT Agent (Gate 3, **HF**) | 0.6649 | 0.54 | 0.50 | 0.715 |
+| GRPO-smoke-20 (vLLM det) | **0.7155** | 0.575 | **0.6141** | 0.855 |
+
+Δ vs Gate 3 SFT: F1 **+0.0506**, EM +0.035, Evidence **+0.114**. `p_search_2` still 0. **NO_COLLAPSE** — this is the only decision this eval is allowed to make.
+
+Do **not** treat 0.7155 as formal Δ_RL: (1) official SFT number is HF, this run is vLLM det; (2) the ckpt saw the same 128 prompts ~5 epochs. **Formal GRPO-v1 restarts from `outputs/22_sft_qwen3_8b_merged`**, not `global_step_20`. Do not retune T / entropy / batch / TIS / reward.
+
+Next: Gate 5.5 freeze ~5K RL train (question-only to policy; gold only for reward). Then Formal-v1 200→400→600→800 with frozen-dev@200 at each milestone. Sealed test once after unique best.
 
 ---
 
@@ -518,13 +529,16 @@ Main claim is **Δ_RL = Metric_GRPO − Metric_SFT**, not GRPO vs Base.
 
 | Model | Answer F1 | EM | Evidence F1 | Finish | Search/Tool |
 |---|---:|---:|---:|---:|---:|
-| Qwen3-8B Direct | | | – | | 0 |
-| Qwen3-8B + RAG | | | – | | 1 |
-| Qwen3-8B SFT Agent | | | | | |
-| **Qwen3-8B Evidence-GRPO** | | | | | |
+| Qwen3-8B Direct | 0.2647 | 0.19 | – | – | none |
+| Qwen3-8B + RAG | 0.6659 | 0.57 | – | – | fixed |
+| Qwen3-8B SFT Agent | **0.6649** | 0.54 | **0.50** | 1.0 | autonomous |
+| GRPO-smoke-20 *(diagnostic)* | 0.7155 | 0.575 | 0.614 | 1.0 | autonomous |
+| **Qwen3-8B Formal GRPO** | | | | | |
 
 Base→SFT = learned to be an Agent.
 SFT→GRPO = on-policy Agentic RL improved the policy.
+
+GRPO-smoke-20 is a **collapse check only** (128-set ~5 epoch ckpt, vLLM vs Gate 3 HF). Formal Δ_RL comes from Formal GRPO-v1 restarted at SFT merged. Do not fill that row from `global_step_20`.
 
 ---
 

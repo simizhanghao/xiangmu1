@@ -1,0 +1,45 @@
+{
+  "gate": "SMOKE20_FROZEN_DEV200_NO_COLLAPSE",
+  "purpose": "Cheap collapse check after Gate 5 20-step. Not formal Δ_RL.",
+  "n": 200,
+  "eval_file": "data/eval/hotpotqa_200.jsonl",
+  "backend": "vllm_openai",
+  "protocol": "Harness v1, Candidate-BM25@5, T=0, max_search_turns=2",
+  "ckpt": "results/36_sglang_token_tis_20step/ckpt/global_step_20",
+  "hf_export": "results/37_hf_grpo_smoke_step20/model_view",
+  "run_dir": "results/38_frozen_dev_grpo_smoke20/n200/agent_rollout_n200_20260818_163031_n200",
+  "elapsed_seconds": 457.81,
+  "sft_gate3_hf": {
+    "mean_token_f1": 0.6649,
+    "mean_em": 0.54,
+    "mean_evidence_f1": 0.4966,
+    "search_rate": 0.715,
+    "finish_rate": 1.0,
+    "note": "Official Gate 3 is HF generate. This smoke eval is vLLM det (n=8 parity PASS)."
+  },
+  "grpo_smoke20_vllm": {
+    "mean_token_f1": 0.7155,
+    "mean_em": 0.575,
+    "mean_evidence_f1": 0.6141,
+    "search_rate": 0.855,
+    "internal_rate": 0.145,
+    "finish_rate": 1.0,
+    "parse_ok_rate": 1.0,
+    "p_search_2": 0.0,
+    "observation_mask_ok_rate": 1.0,
+    "mean_generated_tokens": 198.9
+  },
+  "delta_vs_sft_gate3": {
+    "f1": 0.0506,
+    "em": 0.035,
+    "evidence_f1": 0.1175
+  },
+  "collapse": false,
+  "do_not": [
+    "Treat 0.7155 as the project GRPO result",
+    "Continue formal training from global_step_20",
+    "Claim query rewrite or multi-hop (p_search_2 still 0)"
+  ],
+  "why_not_formal": "20 steps × batch 32 = 640 exposures of 128 unique prompts (~5 epochs). Smoke-set adaptation. Formal GRPO-v1 restarts from outputs/22_sft_qwen3_8b_merged on the 5K set.",
+  "next": "Gate 5.5 freeze ~5K RL train, then Formal GRPO-v1 from SFT merged"
+}

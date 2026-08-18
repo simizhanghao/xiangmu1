@@ -1,0 +1,27 @@
+{
+  "sft": {
+    "mean_token_f1": 0.6649,
+    "mean_em": 0.54,
+    "mean_evidence_f1": 0.5,
+    "search_rate": 0.715,
+    "finish_rate": 1.0
+  },
+  "grpo_smoke20": {
+    "num_samples": 200,
+    "backend": "vllm_openai",
+    "finish_rate": 1.0,
+    "parse_ok_rate": 1.0,
+    "mean_em": 0.575,
+    "mean_token_f1": 0.7155,
+    "mean_evidence_f1": 0.6141,
+    "search_rate": 0.855,
+    "internal_rate": 0.145,
+    "p_search_2": 0.0,
+    "observation_mask_ok_rate": 1.0,
+    "mean_generated_tokens": 198.9
+  },
+  "collapse": false,
+  "verdict": "SMOKE20_FROZEN_DEV200_NO_COLLAPSE",
+  "not_formal_delta_rl": true,
+  "summary": "/data1/hcc/deepresearch/Dee/results/38_frozen_dev_grpo_smoke20/n200/agent_rollout_n200_20260818_163031_n200/summary.json"
+}

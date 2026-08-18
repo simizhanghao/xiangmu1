@@ -2,7 +2,7 @@
 
 冻结总计划（唯一执行线）：[PLAN.md](PLAN.md)。
 
-**当前进度（2026-08-18）：** Gate 5 **`SGLANG_TOKEN_TIS_20STEP_PASS`**（20/20，45 min，ESS≥0.9998，reward 0.28→0.38）。正式路线 = **SGLang + Decoupled Token-TIS**；VeXact 只作 Exact 锚。20-step 是 128 smoke 上的稳定性，**不是 F1 门**。Next：frozen-dev@200，再 Gate 5.5 建 5K。不改 `07_run_evidence_grpo.sh`。
+**当前进度（2026-08-18）：** Gate 5 20-step **PASS**；smoke-20 frozen-dev@200 **`NO_COLLAPSE`**（vLLM det F1 0.7155 / Evidence 0.614，相对 Gate 3 SFT HF 0.6649 / 0.50）。这是 128 集 ~5 epoch 的诊断，**不是正式 Δ_RL**。正式训练从 `outputs/22_sft_qwen3_8b_merged` 重启。Next：Gate 5.5 建 5K。不改 `07_run_evidence_grpo.sh`。
 
 ## 项目目标
 
@@ -19,7 +19,8 @@ Qwen3-8B (dense, non-thinking)
   → Gate 4 Exact VeXact 1-step（正确性锚，已 PASS）
   → Step A/B：SGLang μ/π audit + Decoupled Token-TIS 1-step（已 PASS）
   → Gate 5：SGLang + Token-TIS 20-step（已 PASS）
-  → frozen-dev@200 vs SFT，再 5K 上 200→400→600→800
+  → smoke-20 frozen-dev@200 NO_COLLAPSE（诊断，非正式 Δ_RL）
+  → Gate 5.5 5K，从 SFT merged 重启 Formal GRPO 200→800
   → 唯一 best checkpoint
 ```
 
@@ -31,6 +32,7 @@ Qwen3-8B (dense, non-thinking)
 | Gate 4 Exact 1-step | `GRPO_SEGMENT_PASS` | step **2073s**（gen 1817s）；reward 0.286；Exact pearson 0.976 |
 | Step A SGLang μ/π | `SGLANG_PROB_AUDIT_PASS` | search 0.375；ESS **0.999**；ρ mean 0.997；mild mismatch |
 | Gate 5 Token-TIS 20-step | `SGLANG_TOKEN_TIS_20STEP_PASS` | 20/20 in **45 min**；median ~2.3 min/step；reward 0.28→0.38；ESS≥0.9998 |
+| smoke-20 frozen-dev@200 | `SMOKE20_FROZEN_DEV200_NO_COLLAPSE` | vLLM det F1 **0.7155** / EM 0.575 / Evidence **0.614**；finish=1.0；**不是正式 Δ_RL** |
 
 正式训练是 **Exact-validated, rollout-corrected Agentic GRPO**，不要叫 Exact。VeXact 只作锚，不再跑 20-step / 200–800。摘要：`results/33_gate4_grpo_1step/gate4_summary.json`、`results/34_sglang_prob_audit/sglang_prob_summary.json`、`results/35_sglang_token_tis_1step/stepb_summary.json`。
 
@@ -127,6 +129,7 @@ Harness v1 已冻结。后面 Gate 3 @200 和 GRPO rollout 必须复用 `src/age
   → Candidate-BM25
   → 1-step Exact GRPO smoke on 128（必须 GRPO_SEGMENT_PASS）
   → 20-step throughput on 128
+  → smoke-20 frozen-dev@200（NO_COLLAPSE；不从 step20 续训）
   → Gate 5.5 构建正式 HotpotQA-5K
   → 200 → 400 → 600 → 800 + fast-dev 200 / formal-dev 1000
   → 唯一 best 后再开 sealed Test
