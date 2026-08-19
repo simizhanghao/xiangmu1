@@ -1,0 +1,24 @@
+{
+  "gate": "FORMAL_V1_200_TO_400_TRAIN_COMPLETE",
+  "resume": "results/39_formal_grpo_v1/ckpt/global_step_200",
+  "latest": 400,
+  "elapsed": "5h49m for displayed 400/400 bar (includes resume warmup; ~102s/step after start)",
+  "hard_fail": false,
+  "tis_ess": "~0.9998",
+  "train_rollout": {
+    "answer_em": "0 on every logged step 201–400",
+    "ans_nz": "0.0 all steps",
+    "ev_nz": "0.03–0.25 (typically 0.12–0.22)",
+    "search_rate": 1.0,
+    "finish": 1.0,
+    "format": 1.0,
+    "evidence_f1_range": [0.5257, 0.7165],
+    "evidence_f1_step400": 0.5487,
+    "total_step400": 0.3744,
+    "score_ceiling": 0.6,
+    "entropy_step201": 0.0248,
+    "entropy_step400": 0.0138
+  },
+  "not_selection": "Train T=0.7 reward is not frozen-dev F1. Do not stop or continue 600 from these numbers alone.",
+  "next": "Same-protocol vLLM det frozen-dev@200 of global_step_400 vs SFT-vLLM 0.6693 / GRPO-200 0.6988."
+}

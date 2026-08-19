@@ -2,7 +2,7 @@
 
 冻结总计划（唯一执行线）：[PLAN.md](PLAN.md)。
 
-**当前进度（2026-08-19）：** Formal-v1@200 **`FORMAL_V1_STEP200_FROZEN_DEV200_NO_COLLAPSE`**。vLLM det vs Gate 3 HF：Answer F1 **0.6988** / EM 0.545 / Evidence **0.7727**（SFT 为 0.6649 / 0.54 / 0.50）。Next：从 formal `global_step_200` 续到 400。不从 SFT 重开，不从 smoke-20 续训。不拆 sealed test。
+**当前进度（2026-08-19）：** Formal-v1@400 frozen-dev **NO_COLLAPSE**，当前领先 ckpt。同后端 Δ_RL vs SFT-vLLM：F1 **0.6693→0.7338（+0.0645）**，EM **0.545→0.62（+0.075）**，Evidence **0.494→0.748（+0.254）**。vs @200：F1 +3.5pp、EM +7.5pp、Evidence −2.5pp。决策：**续训到 600**。不改 reward，不从 smoke-20 续训，不开 sealed test。
 
 ## 项目目标
 
@@ -21,8 +21,9 @@ Qwen3-8B (dense, non-thinking)
   → Gate 5：SGLang + Token-TIS 20-step（已 PASS）
   → smoke-20 frozen-dev@200 NO_COLLAPSE（诊断，非正式 Δ_RL）
   → Gate 5.5 5K，从 SFT merged 开 Formal GRPO-v1
-  → Formal-v1@200 frozen-dev NO_COLLAPSE（首个正式里程碑，还不是 unique best）
-  → 400 → 600 → 800 + 每次 frozen-dev@200
+  → Formal-v1@200 frozen-dev NO_COLLAPSE（首个正式里程碑）
+  → Formal-v1@400 frozen-dev NO_COLLAPSE（当前领先；续 600）
+  → 600 → 800 + 每次 frozen-dev@200
   → 唯一 best checkpoint
 ```
 
@@ -36,9 +37,10 @@ Qwen3-8B (dense, non-thinking)
 | Gate 5 Token-TIS 20-step | `SGLANG_TOKEN_TIS_20STEP_PASS` | 20/20 in **45 min**；median ~2.3 min/step；reward 0.28→0.38；ESS≥0.9998 |
 | smoke-20 frozen-dev@200 | `SMOKE20_FROZEN_DEV200_NO_COLLAPSE` | vLLM det F1 **0.7155** / EM 0.575 / Evidence **0.614**；finish=1.0；**不是正式 Δ_RL** |
 | Gate 5.5 formal 5K | `GATE55_FORMAL_5K_PASS` | train 5000 / formal-dev 1000；SFT overlap 2809 recorded；BM25 index 5016 |
-| Formal-v1@200 | `FORMAL_V1_STEP200_FROZEN_DEV200_NO_COLLAPSE` | 5K、200 step、~6h；frozen-dev vLLM F1 **0.6988** / EM 0.545 / Evidence **0.7727**；search=1.0；**还不是 unique best** |
+| Formal-v1@200 | `FORMAL_V1_STEP200_FROZEN_DEV200_NO_COLLAPSE` | 5K、200 step；vLLM F1 **0.6988** / EM 0.545 / Evidence **0.7727**；search=1.0 |
+| Formal-v1@400 | `FORMAL_V1_STEP400_FROZEN_DEV200_NO_COLLAPSE` | 5K、400 step；vLLM F1 **0.7338** / EM **0.62** / Evidence **0.7477**；`p_search_2=0.085`；**当前领先，续 600** |
 
-正式训练是 **Exact-validated, rollout-corrected Agentic GRPO**，不要叫 Exact。VeXact 只作锚，不再跑 20-step / 200–800。摘要：`results/33_gate4_grpo_1step/gate4_summary.json`、`results/34_sglang_prob_audit/sglang_prob_summary.json`、`results/35_sglang_token_tis_1step/stepb_summary.json`、`results/41_frozen_dev_formal_grpo200/formal200_dev200_summary.json`。
+正式训练是 **Exact-validated, rollout-corrected Agentic GRPO**，不要叫 Exact。VeXact 只作锚，不再跑 20-step / 200–800。摘要：`results/41_frozen_dev_formal_grpo200/formal200_dev200_summary.json`、`results/42_frozen_dev_sft_vllm/sft_vllm_dev200_summary.json`、`results/45_frozen_dev_formal_grpo400/formal400_dev200_summary.json`。
 
 ## Formal-v1@200（2026-08-19，首个正式里程碑）
 
@@ -48,9 +50,25 @@ Qwen3-8B (dense, non-thinking)
 |---|---:|---:|---:|---:|---|
 | SFT Agent（Gate 3） | 0.6649 | 0.54 | 0.50 | 0.715 | **HF greedy** |
 | Formal-v1@200 | **0.6988** | 0.545 | **0.7727** | 1.0 | **vLLM det** |
-| Δ | **+0.0339** | +0.005 | **+0.273** | +0.285 | 后端不同，n=8 已对齐 |
+| Δ vs Gate 3 HF | +0.0339 | +0.005 | +0.273 | +0.285 | 后端不同 |
+| SFT（同 vLLM det） | 0.6693 | 0.545 | 0.4939 | 0.71 | **vLLM det** |
+| **同后端 Δ_RL** | **+0.0295** | **0** | **+0.2788** | +0.29 | 正式对照 |
 
-读法：主收益在 Evidence，答案几乎持平。训练后期 T=0.7 的 `answer_em` 掉到 0，但 greedy 评测 EM 仍是 0.545——train reward 不是 F1。`p_search_2` 仍为 0，不能声称 multi-hop。smoke-20 的 0.7155 只是 128 题诊断，不作正式对照。400/600/800 后再选 unique best。
+读法：SFT 的 vLLM vs HF 只差 F1 +0.0044，后端不是故事。@200 同后端 Δ_RL 是 Answer F1 **+3.0pp**、Evidence **+27.9pp**、EM **不动**。
+
+## Formal-v1@400（2026-08-19，当前领先）
+
+同一 frozen-dev@200、同一 vLLM det。`global_step_400` 从 formal-200 resume，配置冻结。200/200 无 collapse。
+
+| 模型 | Answer F1 | EM | Evidence F1 | search | p_search_2 | 后端 |
+|---|---:|---:|---:|---:|---:|---|
+| SFT（同 vLLM det） | 0.6693 | 0.545 | 0.4939 | 0.71 | 0 | **vLLM det** |
+| Formal-v1@200 | 0.6988 | 0.545 | **0.7727** | 1.0 | 0 | **vLLM det** |
+| **Formal-v1@400** | **0.7338** | **0.62** | 0.7477 | 0.995 | **0.085** | **vLLM det** |
+| Δ_RL vs SFT | **+0.0645** | **+0.075** | **+0.2538** | +0.285 | +0.085 | 正式对照 |
+| Δ vs @200 | **+0.035** | **+0.075** | −0.025 | −0.005 | +0.085 | 趋势 |
+
+400 决策：**Answer 明显上升 → 续 600**。当前领先 ckpt = `global_step_400`，还不是 unique best。`p_search_2=0.085` 只是观察信号，**不声称 multi-hop**。训练侧 `ans_nz=0` 黄灯仍在：greedy Answer 涨了，并不等于 EM 组内优势恢复。摘要：`results/45_frozen_dev_formal_grpo400/formal400_dev200_summary.json`。
 
 ## 已冻结的实验定义
 
@@ -65,7 +83,7 @@ Qwen3-8B (dense, non-thinking)
 - Budget：正式终点 200/400/600/800；1000 不是 KPI。
 - 选模：先过 finish/format/observation-mask health gate，再按 Answer F1、Evidence F1、EM、少重复 query、较早 checkpoint。
 - Test：在唯一 best 冻结前禁止打开 sealed HotpotQA Test。
-- 能力边界：GRPO v1 可声称 routing / evidence / answer；**不可**声称 query reformulation 或 multi-hop。
+- 能力边界：GRPO v1 可声称 routing / evidence / answer；**不可**声称 query reformulation 或 multi-hop（@400 的 `p_search_2=0.085` 只观察）。
 
 ## 目录
 
@@ -148,7 +166,8 @@ Harness v1 已冻结。后面 Gate 3 @200 和 GRPO rollout 必须复用 `src/age
   → smoke-20 frozen-dev@200（NO_COLLAPSE；不从 step20 续训）
   → Gate 5.5 构建正式 HotpotQA-5K
   → Formal-v1@200 frozen-dev（NO_COLLAPSE；从 formal-200 续 400）
-  → 400 → 600 → 800 + fast-dev 200 / formal-dev 1000
+  → Formal-v1@400 frozen-dev（NO_COLLAPSE；当前领先，续 600）
+  → 600 → 800 + fast-dev 200 / formal-dev 1000
   → 唯一 best 后再开 sealed Test
 ```
 

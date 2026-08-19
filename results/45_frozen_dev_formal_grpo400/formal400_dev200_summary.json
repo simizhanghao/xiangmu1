@@ -1,0 +1,81 @@
+{
+  "gate": "FORMAL_V1_STEP400_FROZEN_DEV200_NO_COLLAPSE",
+  "purpose": "Second formal GRPO milestone. Decision point: Answer F1 still up → continue to 600.",
+  "n": 200,
+  "eval_file": "data/eval/hotpotqa_200.jsonl",
+  "backend": "vllm_openai",
+  "protocol": "Harness v1, Candidate-BM25@5, T=0, max_search_turns=2",
+  "ckpt": "results/39_formal_grpo_v1/ckpt/global_step_400",
+  "hf_export": "results/44_hf_formal_grpo_step400/model_view",
+  "run_dir": "results/45_frozen_dev_formal_grpo400/n200/agent_rollout_n200_20260819_101124_formal400_n200",
+  "elapsed_seconds": 661.7,
+  "health": {
+    "finish_rate": 0.99,
+    "parse_ok_rate": 1.0,
+    "observation_mask_ok_rate": 1.0,
+    "internal_rate": 0.0,
+    "collapse": false
+  },
+  "sft_vllm": {
+    "mean_token_f1": 0.6693,
+    "mean_em": 0.545,
+    "mean_evidence_f1": 0.4939,
+    "search_rate": 0.71,
+    "p_search_2": 0.0,
+    "finish_rate": 1.0
+  },
+  "formal_grpo200_vllm": {
+    "mean_token_f1": 0.6988,
+    "mean_em": 0.545,
+    "mean_evidence_f1": 0.7727,
+    "search_rate": 1.0,
+    "p_search_2": 0.0,
+    "finish_rate": 1.0,
+    "mean_generated_tokens": 219.5
+  },
+  "formal_grpo400_vllm": {
+    "mean_token_f1": 0.7338,
+    "mean_em": 0.62,
+    "mean_evidence_f1": 0.7477,
+    "search_rate": 0.995,
+    "mean_search_count": 1.08,
+    "internal_rate": 0.0,
+    "finish_rate": 0.99,
+    "parse_ok_rate": 1.0,
+    "p_search_0": 0.005,
+    "p_search_1": 0.91,
+    "p_search_2": 0.085,
+    "p_search_ge3": 0.0,
+    "mean_duplicate_query_count": 0.03,
+    "observation_mask_ok_rate": 1.0,
+    "mean_generated_tokens": 288.8,
+    "mean_observation_tokens": 916.1,
+    "max_search_turn_hit_rate": 0.0
+  },
+  "same_backend_delta_rl_vs_sft": {
+    "f1": 0.0645,
+    "em": 0.075,
+    "evidence_f1": 0.2538,
+    "search_rate": 0.285
+  },
+  "delta_vs_formal200": {
+    "f1": 0.035,
+    "em": 0.075,
+    "evidence_f1": -0.025,
+    "p_search_2": 0.085
+  },
+  "train_time_note": "T=0.7 train EM and ans_nz stayed 0 on steps 201–400. Greedy eval Answer F1/EM still rose. Train reward is not F1.",
+  "decision": "CONTINUE_TO_600",
+  "decision_reason": "Answer F1 clearly up vs @200 (+3.5pp) and vs SFT (+6.45pp). EM +7.5pp. Evidence -2.5pp but still +25.4pp vs SFT. Health holds.",
+  "current_leader": "formal_global_step_400",
+  "not_unique_best_yet": true,
+  "do_not": [
+    "Freeze unique best before 600 eval",
+    "Open sealed test",
+    "Change reward / GDPO / GSPO",
+    "Resume from smoke global_step_20",
+    "Claim query rewrite or multi-hop (p_search_2=0.085 is a watch signal only)",
+    "Call SGLang+TIS Exact"
+  ],
+  "next": "Resume Formal-v1 from formal global_step_400 to 600. Same reward/TIS/batch. Then same-protocol frozen-dev@200."
+}

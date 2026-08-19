@@ -1,0 +1,51 @@
+{
+  "gate": "SFT_VLLM_DET_FROZEN_DEV200",
+  "purpose": "Same-backend SFT baseline for Formal-v1@200. Clean Δ_RL.",
+  "n": 200,
+  "eval_file": "data/eval/hotpotqa_200.jsonl",
+  "backend": "vllm_openai",
+  "protocol": "Harness v1, Candidate-BM25@5, T=0, max_search_turns=2",
+  "model": "outputs/22_sft_qwen3_8b_merged",
+  "run_dir": "results/42_frozen_dev_sft_vllm/n200/agent_rollout_n200_20260819_005714_sft_vllm_n200",
+  "elapsed_seconds": 424.32,
+  "sft_gate3_hf": {
+    "mean_token_f1": 0.6649,
+    "mean_em": 0.54,
+    "mean_evidence_f1": 0.5,
+    "search_rate": 0.715,
+    "finish_rate": 1.0
+  },
+  "sft_vllm": {
+    "mean_token_f1": 0.6693,
+    "mean_em": 0.545,
+    "mean_evidence_f1": 0.4939,
+    "search_rate": 0.71,
+    "internal_rate": 0.29,
+    "finish_rate": 1.0,
+    "parse_ok_rate": 1.0,
+    "p_search_2": 0.0
+  },
+  "formal_grpo200_vllm": {
+    "mean_token_f1": 0.6988,
+    "mean_em": 0.545,
+    "mean_evidence_f1": 0.7727,
+    "search_rate": 1.0,
+    "internal_rate": 0.0,
+    "finish_rate": 1.0,
+    "parse_ok_rate": 1.0,
+    "p_search_2": 0.0
+  },
+  "backend_delta_sft_vllm_minus_hf": {
+    "f1": 0.0044,
+    "em": 0.005,
+    "evidence_f1": -0.0061,
+    "search_rate": -0.005
+  },
+  "same_backend_delta_rl": {
+    "f1": 0.0295,
+    "em": 0.0,
+    "evidence_f1": 0.2788,
+    "search_rate": 0.29
+  },
+  "note": "Gate 3 HF 0.6649 stays the official SFT gate. Paper Δ_RL for Formal-v1@200 should cite same-backend +0.0295 F1 / +0.2788 Evidence. EM unchanged at 0.545."
+}

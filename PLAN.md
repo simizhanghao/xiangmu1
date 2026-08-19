@@ -515,7 +515,24 @@ Runs on the **Gate 5.5 5K set**, not the 128 smoke set.
 Watch Answer F1 / Evidence F1 / EM up; Finish / Format / tool behavior must not collapse.
 Best may be 200, 400, 600, or 800. Confirm on formal-dev 1000 before freeze.
 
-**DONE 2026-08-19 Formal-v1@200 frozen-dev:** `FORMAL_V1_STEP200_FROZEN_DEV200_NO_COLLAPSE`. Artifact: `Dee/results/41_frozen_dev_formal_grpo200/formal200_dev200_summary.json`. vLLM det vs Gate 3 HF: Answer F1 0.6988 vs 0.6649, EM 0.545 vs 0.54, Evidence F1 0.7727 vs 0.50, search 1.0 vs 0.715. Protocol healthy; `p_search_2` still 0. Not unique best. Next: resume formal `global_step_200` → 400.
+**DONE 2026-08-19 Formal-v1@200 frozen-dev:** `FORMAL_V1_STEP200_FROZEN_DEV200_NO_COLLAPSE`. Artifact: `Dee/results/41_frozen_dev_formal_grpo200/formal200_dev200_summary.json`. vLLM det vs Gate 3 HF: Answer F1 0.6988 vs 0.6649, EM 0.545 vs 0.54, Evidence F1 0.7727 vs 0.50, search 1.0 vs 0.715. Protocol healthy; `p_search_2` still 0.
+
+**DONE 2026-08-19 Formal-v1@400 frozen-dev:** `FORMAL_V1_STEP400_FROZEN_DEV200_NO_COLLAPSE`. Artifact: `Dee/results/45_frozen_dev_formal_grpo400/formal400_dev200_summary.json`. Same vLLM det / same 200 IDs. finish=0.99, parse=1.0, obs mask=1.0. Answer F1 **0.7338**, EM **0.62**, Evidence **0.7477**, search 0.995, **`p_search_2=0.085`**.
+
+Same-backend Δ_RL vs SFT-vLLM 0.6693/0.545/0.4939: F1 **+0.0645**, EM **+0.075**, Evidence **+0.2538**.
+vs Formal-v1@200: F1 **+0.035**, EM **+0.075**, Evidence **−0.025**. Current leader = `global_step_400`. **Not unique best yet.**
+
+**400 decision = CONTINUE_TO_600.** Answer is clearly up. Do **not** freeze. Do **not** change reward / GDPO / GSPO. Do **not** claim multi-hop from `p_search_2=0.085`.
+
+Yellow light still on: train T=0.7 `answer_em`/`ans_nz` stayed 0 on steps 201–400. Greedy eval Answer still rose, so EM group-advantage is sparse, not collapse. Watch Evidence (−2.5pp vs @200) and finish (1 unfinished) at 600.
+
+After 600 (same rule):
+
+- Answer still clearly up → consider 800, then eval.
+- Evidence keeps rising, Answer flat, search locked at 1 → **stop v1**, keep best of 200/400/600.
+- Answer down + Evidence up → stop v1 (over-optimization).
+
+If v1 plateaus: Formal-v2 restarts from SFT merged. First v2-A = dense answer reward (Token-F1 or 0.5 EM + 0.5 F1). Then v2-B = GDPO if multi-reward still drowns Answer. Do not swap GSPO/DPPO/OPO for this signal-composition problem.
 
 ---
 
@@ -545,7 +562,8 @@ Main claim is **Δ_RL = Metric_GRPO − Metric_SFT**, not GRPO vs Base.
 | Qwen3-8B + RAG | 0.6659 | 0.57 | – | – | fixed |
 | Qwen3-8B SFT Agent | **0.6649** | 0.54 | **0.50** | 1.0 | autonomous |
 | GRPO-smoke-20 *(diagnostic)* | 0.7155 | 0.575 | 0.614 | 1.0 | autonomous |
-| **Qwen3-8B Formal GRPO** | | | | | |
+| Formal-v1@200 (vLLM) | 0.6988 | 0.545 | 0.7727 | 1.0 | autonomous |
+| **Formal-v1@400 (vLLM)** | **0.7338** | **0.62** | 0.7477 | 0.99 | autonomous |
 
 Base→SFT = learned to be an Agent.
 SFT→GRPO = on-policy Agentic RL improved the policy.
