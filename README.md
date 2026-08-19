@@ -2,7 +2,7 @@
 
 冻结总计划（唯一执行线）：[PLAN.md](PLAN.md)。
 
-**当前进度（2026-08-19）：** Formal-v1@400 frozen-dev **NO_COLLAPSE**，当前领先 ckpt。同后端 Δ_RL vs SFT-vLLM：F1 **0.6693→0.7338（+0.0645）**，EM **0.545→0.62（+0.075）**，Evidence **0.494→0.748（+0.254）**。vs @200：F1 +3.5pp、EM +7.5pp、Evidence −2.5pp。决策：**续训到 600**。不改 reward，不从 smoke-20 续训，不开 sealed test。
+**当前进度（2026-08-19）：** Formal-v1@600 frozen-dev **NO_COLLAPSE，但 Answer 回落**。@400 仍领先：F1 **0.7338 / 0.717**，EM **0.62 / 0.59**，Evidence **0.748 / 0.634**。决策：**停 v1，不跑 800**。正式 Δ_RL 仍按 @400 vs SFT-vLLM：**F1 +6.45pp、EM +7.5pp、Evidence +25.4pp**。下一步：formal-dev 1000 确认后再冻 `FINAL_POLICY`。
 
 ## 项目目标
 
@@ -22,9 +22,9 @@ Qwen3-8B (dense, non-thinking)
   → smoke-20 frozen-dev@200 NO_COLLAPSE（诊断，非正式 Δ_RL）
   → Gate 5.5 5K，从 SFT merged 开 Formal GRPO-v1
   → Formal-v1@200 frozen-dev NO_COLLAPSE（首个正式里程碑）
-  → Formal-v1@400 frozen-dev NO_COLLAPSE（当前领先；续 600）
-  → 600 → 800 + 每次 frozen-dev@200
-  → 唯一 best checkpoint
+  → Formal-v1@400 frozen-dev NO_COLLAPSE（当前领先）
+  → Formal-v1@600 frozen-dev NO_COLLAPSE（Answer 回落；停 800）
+  → formal-dev 1000 确认 → FINAL_POLICY
 ```
 
 ## 2026-08-18 新结果（Gate 4 → Step B）
@@ -38,9 +38,10 @@ Qwen3-8B (dense, non-thinking)
 | smoke-20 frozen-dev@200 | `SMOKE20_FROZEN_DEV200_NO_COLLAPSE` | vLLM det F1 **0.7155** / EM 0.575 / Evidence **0.614**；finish=1.0；**不是正式 Δ_RL** |
 | Gate 5.5 formal 5K | `GATE55_FORMAL_5K_PASS` | train 5000 / formal-dev 1000；SFT overlap 2809 recorded；BM25 index 5016 |
 | Formal-v1@200 | `FORMAL_V1_STEP200_FROZEN_DEV200_NO_COLLAPSE` | 5K、200 step；vLLM F1 **0.6988** / EM 0.545 / Evidence **0.7727**；search=1.0 |
-| Formal-v1@400 | `FORMAL_V1_STEP400_FROZEN_DEV200_NO_COLLAPSE` | 5K、400 step；vLLM F1 **0.7338** / EM **0.62** / Evidence **0.7477**；`p_search_2=0.085`；**当前领先，续 600** |
+| Formal-v1@400 | `FORMAL_V1_STEP400_FROZEN_DEV200_NO_COLLAPSE` | 5K、400 step；vLLM F1 **0.7338** / EM **0.62** / Evidence **0.7477**；`p_search_2=0.085`；**当前领先** |
+| Formal-v1@600 | `FORMAL_V1_STEP600_FROZEN_DEV200_NO_COLLAPSE` | vLLM F1 **0.717** / EM **0.59** / Evidence **0.634**；finish 0.965；**停 800** |
 
-正式训练是 **Exact-validated, rollout-corrected Agentic GRPO**，不要叫 Exact。VeXact 只作锚，不再跑 20-step / 200–800。摘要：`results/41_frozen_dev_formal_grpo200/formal200_dev200_summary.json`、`results/42_frozen_dev_sft_vllm/sft_vllm_dev200_summary.json`、`results/45_frozen_dev_formal_grpo400/formal400_dev200_summary.json`。
+正式训练是 **Exact-validated, rollout-corrected Agentic GRPO**，不要叫 Exact。VeXact 只作锚。摘要：`results/45_frozen_dev_formal_grpo400/formal400_dev200_summary.json`、`results/48_frozen_dev_formal_grpo600/formal600_dev200_summary.json`。
 
 ## Formal-v1@200（2026-08-19，首个正式里程碑）
 
@@ -68,7 +69,21 @@ Qwen3-8B (dense, non-thinking)
 | Δ_RL vs SFT | **+0.0645** | **+0.075** | **+0.2538** | +0.285 | +0.085 | 正式对照 |
 | Δ vs @200 | **+0.035** | **+0.075** | −0.025 | −0.005 | +0.085 | 趋势 |
 
-400 决策：**Answer 明显上升 → 续 600**。当前领先 ckpt = `global_step_400`，还不是 unique best。`p_search_2=0.085` 只是观察信号，**不声称 multi-hop**。训练侧 `ans_nz=0` 黄灯仍在：greedy Answer 涨了，并不等于 EM 组内优势恢复。摘要：`results/45_frozen_dev_formal_grpo400/formal400_dev200_summary.json`。
+400 当时决策是续 600。`p_search_2=0.085` 只观察，**不声称 multi-hop**。
+
+## Formal-v1@600（2026-08-19，停线）
+
+同一 frozen-dev@200、同一 vLLM det。`global_step_600` 从 formal-400 resume，配置冻结。协议未崩（finish 0.965 / parse 1.0 / mask 1.0），但质量回落。
+
+| 模型 | Answer F1 | EM | Evidence F1 | finish | gen tok |
+|---|---:|---:|---:|---:|---:|
+| SFT（同 vLLM det） | 0.6693 | 0.545 | 0.4939 | 1.0 | — |
+| Formal-v1@200 | 0.6988 | 0.545 | **0.7727** | 1.0 | 220 |
+| **Formal-v1@400** | **0.7338** | **0.62** | 0.7477 | 0.99 | 289 |
+| Formal-v1@600 | 0.717 | 0.59 | 0.6343 | 0.965 | **619** |
+| Δ 600 vs 400 | **−0.0168** | **−0.03** | **−0.113** | −0.025 | +330 |
+
+600 决策：**STOP_V1_NO_800**。不是 case A。当前领先仍是 `global_step_400`。正式 Δ_RL 继续引用 @400 vs SFT。摘要：`results/48_frozen_dev_formal_grpo600/formal600_dev200_summary.json`。
 
 ## 已冻结的实验定义
 
@@ -166,9 +181,9 @@ Harness v1 已冻结。后面 Gate 3 @200 和 GRPO rollout 必须复用 `src/age
   → smoke-20 frozen-dev@200（NO_COLLAPSE；不从 step20 续训）
   → Gate 5.5 构建正式 HotpotQA-5K
   → Formal-v1@200 frozen-dev（NO_COLLAPSE；从 formal-200 续 400）
-  → Formal-v1@400 frozen-dev（NO_COLLAPSE；当前领先，续 600）
-  → 600 → 800 + fast-dev 200 / formal-dev 1000
-  → 唯一 best 后再开 sealed Test
+  → Formal-v1@400 frozen-dev（NO_COLLAPSE；当前领先）
+  → Formal-v1@600 frozen-dev（Answer 回落；停 800）
+  → formal-dev 1000 确认后再开 sealed Test
 ```
 
 外部依赖：LlamaFactory、VeXact/VeOmni/veRL、本机 8B 权重。

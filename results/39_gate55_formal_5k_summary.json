@@ -1,0 +1,25 @@
+{
+  "gate": "GATE55_FORMAL_5K_PASS",
+  "seed": 42,
+  "n_train": 5000,
+  "n_formal_dev": 1000,
+  "n_verl_val": 16,
+  "n_index": 5016,
+  "unique_train": true,
+  "overlap_train_frozen_dev": 0,
+  "overlap_train_sealed": 0,
+  "overlap_train_sft": 2809,
+  "sft_ids_available": 4550,
+  "policy_sees": ["system", "question"],
+  "policy_must_not_see": ["gold_answers", "contexts", "supporting_facts"],
+  "reward_sees": ["gold_answers", "supporting_facts"],
+  "paths": {
+    "train_parquet": "Dee/data/rl/formal_5k/train.parquet",
+    "val_parquet": "Dee/data/rl/formal_5k/val.parquet",
+    "contexts_index": "Dee/data/rl/formal_5k/contexts_index.jsonl",
+    "manifest": "Dee/data/rl/formal_5k/freeze_manifest.json"
+  },
+  "ckpt_deleted_gib_approx": 415,
+  "formal_init": "outputs/22_sft_qwen3_8b_merged",
+  "do_not_resume": "results/36_sglang_token_tis_20step/ckpt/global_step_20"
+}

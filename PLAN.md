@@ -522,17 +522,15 @@ Best may be 200, 400, 600, or 800. Confirm on formal-dev 1000 before freeze.
 Same-backend Δ_RL vs SFT-vLLM 0.6693/0.545/0.4939: F1 **+0.0645**, EM **+0.075**, Evidence **+0.2538**.
 vs Formal-v1@200: F1 **+0.035**, EM **+0.075**, Evidence **−0.025**. Current leader = `global_step_400`. **Not unique best yet.**
 
-**400 decision = CONTINUE_TO_600.** Answer is clearly up. Do **not** freeze. Do **not** change reward / GDPO / GSPO. Do **not** claim multi-hop from `p_search_2=0.085`.
+**400 decision = CONTINUE_TO_600.** Answer was clearly up. Reward / GDPO / GSPO stayed frozen.
 
-Yellow light still on: train T=0.7 `answer_em`/`ans_nz` stayed 0 on steps 201–400. Greedy eval Answer still rose, so EM group-advantage is sparse, not collapse. Watch Evidence (−2.5pp vs @200) and finish (1 unfinished) at 600.
+**DONE 2026-08-19 Formal-v1@600 frozen-dev:** `FORMAL_V1_STEP600_FROZEN_DEV200_NO_COLLAPSE`. Artifact: `Dee/results/48_frozen_dev_formal_grpo600/formal600_dev200_summary.json`. Same vLLM det / same 200 IDs. finish=0.965, parse=1.0, obs mask=1.0. Answer F1 **0.717**, EM **0.59**, Evidence **0.6343**, search 0.995, `p_search_2=0.07`, generated tokens **618.9**.
 
-After 600 (same rule):
+vs Formal-v1@400: F1 **−0.0168**, EM **−0.03**, Evidence **−0.1134**, finish **−0.025**. vs SFT-vLLM still +4.77pp F1 / +4.5pp EM / +14.0pp Evidence.
 
-- Answer still clearly up → consider 800, then eval.
-- Evidence keeps rising, Answer flat, search locked at 1 → **stop v1**, keep best of 200/400/600.
-- Answer down + Evidence up → stop v1 (over-optimization).
+**600 decision = STOP_V1_NO_800.** Not case A. Answer went down, Evidence went down, finish 1.0→0.99→0.965, generations got much longer. Current leader = `global_step_400`. Confirm on formal-dev 1000 before `FINAL_POLICY`. Do **not** train 800. Do **not** change reward on this line.
 
-If v1 plateaus: Formal-v2 restarts from SFT merged. First v2-A = dense answer reward (Token-F1 or 0.5 EM + 0.5 F1). Then v2-B = GDPO if multi-reward still drowns Answer. Do not swap GSPO/DPPO/OPO for this signal-composition problem.
+Formal-v2 is now a candidate only after unique-best freeze: v2-A = dense answer reward; v2-B = GDPO if multi-reward still drowns Answer. Do not swap GSPO/DPPO/OPO for this signal-composition problem.
 
 ---
 
@@ -564,6 +562,7 @@ Main claim is **Δ_RL = Metric_GRPO − Metric_SFT**, not GRPO vs Base.
 | GRPO-smoke-20 *(diagnostic)* | 0.7155 | 0.575 | 0.614 | 1.0 | autonomous |
 | Formal-v1@200 (vLLM) | 0.6988 | 0.545 | 0.7727 | 1.0 | autonomous |
 | **Formal-v1@400 (vLLM)** | **0.7338** | **0.62** | 0.7477 | 0.99 | autonomous |
+| Formal-v1@600 (vLLM) | 0.717 | 0.59 | 0.6343 | 0.965 | autonomous |
 
 Base→SFT = learned to be an Agent.
 SFT→GRPO = on-policy Agentic RL improved the policy.

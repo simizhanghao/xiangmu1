@@ -1,0 +1,90 @@
+{
+  "gate": "FORMAL_V1_STEP600_FROZEN_DEV200_NO_COLLAPSE",
+  "purpose": "Third formal GRPO milestone. Decision point: Answer down vs @400 → stop v1.",
+  "n": 200,
+  "eval_file": "data/eval/hotpotqa_200.jsonl",
+  "backend": "vllm_openai",
+  "protocol": "Harness v1, Candidate-BM25@5, T=0, max_search_turns=2",
+  "ckpt": "results/39_formal_grpo_v1/ckpt/global_step_600",
+  "hf_export": "results/47_hf_formal_grpo_step600/model_view",
+  "run_dir": "results/48_frozen_dev_formal_grpo600/n200/agent_rollout_n200_20260819_170302_formal600_n200",
+  "elapsed_seconds": 1401.32,
+  "health": {
+    "finish_rate": 0.965,
+    "parse_ok_rate": 1.0,
+    "observation_mask_ok_rate": 1.0,
+    "internal_rate": 0.0,
+    "collapse": false
+  },
+  "sft_vllm": {
+    "mean_token_f1": 0.6693,
+    "mean_em": 0.545,
+    "mean_evidence_f1": 0.4939,
+    "search_rate": 0.71,
+    "p_search_2": 0.0,
+    "finish_rate": 1.0
+  },
+  "formal_grpo200_vllm": {
+    "mean_token_f1": 0.6988,
+    "mean_em": 0.545,
+    "mean_evidence_f1": 0.7727,
+    "search_rate": 1.0,
+    "p_search_2": 0.0,
+    "finish_rate": 1.0,
+    "mean_generated_tokens": 219.5
+  },
+  "formal_grpo400_vllm": {
+    "mean_token_f1": 0.7338,
+    "mean_em": 0.62,
+    "mean_evidence_f1": 0.7477,
+    "search_rate": 0.995,
+    "p_search_2": 0.085,
+    "finish_rate": 0.99,
+    "mean_generated_tokens": 288.8
+  },
+  "formal_grpo600_vllm": {
+    "mean_token_f1": 0.717,
+    "mean_em": 0.59,
+    "mean_evidence_f1": 0.6343,
+    "search_rate": 0.995,
+    "mean_search_count": 1.065,
+    "internal_rate": 0.0,
+    "finish_rate": 0.965,
+    "parse_ok_rate": 1.0,
+    "p_search_0": 0.005,
+    "p_search_1": 0.925,
+    "p_search_2": 0.07,
+    "p_search_ge3": 0.0,
+    "mean_duplicate_query_count": 0.005,
+    "observation_mask_ok_rate": 1.0,
+    "mean_generated_tokens": 618.9,
+    "mean_observation_tokens": 892.6,
+    "max_search_turn_hit_rate": 0.0
+  },
+  "same_backend_delta_rl_vs_sft": {
+    "f1": 0.0477,
+    "em": 0.045,
+    "evidence_f1": 0.1404,
+    "search_rate": 0.285
+  },
+  "delta_vs_formal400": {
+    "f1": -0.0168,
+    "em": -0.03,
+    "evidence_f1": -0.1134,
+    "finish_rate": -0.025,
+    "mean_generated_tokens": 330.1
+  },
+  "decision": "STOP_V1_NO_800",
+  "decision_reason": "Answer F1 -1.68pp and EM -3.0pp vs @400. Evidence -11.3pp. finish 0.99→0.965. Generated tokens 289→619. Not case A.",
+  "current_leader": "formal_global_step_400",
+  "not_unique_best_yet": true,
+  "unique_best_note": "400 leads frozen-dev@200. Confirm on formal-dev 1000 before FINAL_POLICY / sealed test.",
+  "do_not": [
+    "Train Formal-v1 to 800",
+    "Change reward / GDPO on this line",
+    "Open sealed test before formal-dev 1000 confirm",
+    "Claim multi-hop",
+    "Treat 600 as unique best"
+  ],
+  "next": "Stop Formal-v1 training. Keep global_step_400 as current leader. Confirm on formal-dev 1000, then freeze FINAL_POLICY."
+}
