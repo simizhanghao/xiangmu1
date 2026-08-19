@@ -36,19 +36,19 @@ Dee/model Qwen3-8B
 [5.5] HotpotQA-5K formal RL contract
         │
         ▼
-[6] GRPO 200 → 400 → 600 → 800 (5K train)
+[6] Formal-v1 GRPO 200 → 400 → 600 (STOP; no 800)
         │
         ▼
-[7] Frozen-dev Unique Best
+[7] formal-dev 1000 confirm (SFT / @200 / @400 / @600, same vLLM)
         │
         ▼
-[8] Sealed Test
+[8] FINAL_POLICY + Sealed Test once
         │
         ▼
 ====== FINAL POLICY FREEZE ======
         │
         ▼
-[9] Live-Web Agent Harness
+[9] Live-Web zero-shot (no train)
         │
         ▼
 [10] Controlled + Web Evaluation
@@ -68,8 +68,8 @@ Do not mix RL gains with search-backend gains.
 
 ```text
 8B Contract → Compatibility → 8B relabel / SFT v2 → SFT → SFT Eval
-  → GRPO Smoke → Throughput → 200/400/600/800
-  → unique best → sealed Test → FINAL POLICY FREEZE
+  → GRPO Smoke → Throughput → 200/400/600 (stop)
+  → formal-dev 1000 confirm → FINAL POLICY → sealed Test once
 ```
 
 ### Milestone B — Same policy, Live Web
@@ -128,8 +128,8 @@ Do **not** reuse the 30B LoRA adapter. Do **not** regenerate Gold / BM25. Do **n
 | **4 GRPO Smoke** | Exact GRPO 1 real update on the **128** smoke set | rollout→reward→Adam→ckpt | Gate 5 |
 | **5 Throughput** | 20 consecutive steps on the **128** set | 800 is deliverable | Gate 5.5 |
 | **5.5 Formal data** | Build HotpotQA-5K train + formal-dev 1000; keep 128 as smoke | Formal RL contract exists | Gate 6 |
-| **6 GRPO** | 200→400→600→800 on **5K**, fast-dev 200 each | RL improves the Agent | Gate 7 |
-| **7 Selection** | Health + fast-dev, then formal-dev 1000 → unique best → sealed Test | Final Agent Policy | OOD / Web |
+| **6 GRPO** | 200→400→600 on **5K**, fast-dev 200 each; **no 800** | RL improves the Agent; sweet spot @400 | Gate 7 |
+| **7 Selection** | formal-dev 1000 confirm (4 models, same vLLM) → unique best → sealed Test once | Final Agent Policy | Web zero-shot |
 
 One gate at a time. No new research line.
 
@@ -528,25 +528,82 @@ vs Formal-v1@200: F1 **+0.035**, EM **+0.075**, Evidence **−0.025**. Current l
 
 vs Formal-v1@400: F1 **−0.0168**, EM **−0.03**, Evidence **−0.1134**, finish **−0.025**. vs SFT-vLLM still +4.77pp F1 / +4.5pp EM / +14.0pp Evidence.
 
-**600 decision = STOP_V1_NO_800.** Not case A. Answer went down, Evidence went down, finish 1.0→0.99→0.965, generations got much longer. Current leader = `global_step_400`. Confirm on formal-dev 1000 before `FINAL_POLICY`. Do **not** train 800. Do **not** change reward on this line.
+**600 decision = STOP_V1_NO_800.** Not a trainer/TIS/SGLang bug. Reading: 5K × batch 32 reaches ~2.56 epochs at 400 and ~3.84 at 600. Train surrogate (Evidence-driven, `ans_nz=0`) kept optimizing while greedy Answer/Evidence/finish fell and generations doubled (289→619) as entropy collapsed (0.014→0.0085). That is over-optimization / verbosity degeneration on a peaked policy, not a system failure.
 
-Formal-v2 is now a candidate only after unique-best freeze: v2-A = dense answer reward; v2-B = GDPO if multi-reward still drowns Answer. Do not swap GSPO/DPPO/OPO for this signal-composition problem.
+Current leader = `global_step_400`. Confirm on formal-dev 1000 before `FINAL_POLICY`. Do **not** train 800. Do **not** change reward / GDPO / DAPO on this line.
+
+Formal-v2 is a **side branch after freeze**, not a replacement for v1. Order if opened later: **A unique RL data 5K→10K/20K → B dense Answer reward → C GDPO only if multi-reward still drowns Answer → D Clip-Higher / soft overlong only if 289→619 repeats**. One variable per step. Do not swap GSPO/DPPO/OPO to “fix” this signal.
+
+Main claim for v1: Agentic GRPO improved **autonomous retrieval-grounded answering and supporting-evidence quality**. Do **not** lead with adaptive routing (`search≈0.995` on Hotpot). Do **not** claim multi-hop from `p_search_2=0.085` until a cheap query1→obs→query2 audit after freeze.
 
 ---
 
-## Gate 7 — Unique best, then sealed Test
+## Gate 7 — formal-dev 1000 confirm, then sealed Test
 
-Health gate first: no Finish regression, no format collapse, no broken tools.
+**NOW.** Do not train. Do not open v2 / GDPO / DAPO. Do not retune Formal-v1.
 
-Then rank:
+Protocol (locked):
+
+```text
+SFT-vLLM + Formal@200 + Formal@400 + Formal@600
+same 1000 IDs (data/eval/hotpotqa_formal_dev_1000.jsonl)
+same vLLM det (T=0)
+same Harness v1 / Candidate-BM25@5 / max_search_turns=2
+```
+
+Primary selection metric stays **Answer F1**. Do not change it after seeing numbers.
+
+**DONE 2026-08-19 Formal@400 @1000:** `FORMAL_V1_STEP400_FORMAL_DEV1000_SCORED`.
+Artifact: `Dee/results/49_formal_dev1000/formal400_dev1000_summary.json`.
+Answer F1 **0.816** / EM 0.75 / Evidence 0.7636 / Joint F1 0.6634 / finish 0.988 / gen **288.0** / `p_search_2=0.071`.
+The important fact is **policy-shape stability vs frozen-dev@200** (search=1, gen≈288, search₂≈0.07, finish≈0.99) — not the 0.816 absolute. Do **not** replace official Δ_RL (still frozen-dev@200: +6.45pp F1). This 1000 is a train-pool confirm split.
+
+**DONE 2026-08-19 SFT-vLLM @1000:** `SFT_VLLM_FORMAL_DEV1000_SCORED`.
+Artifact: `Dee/results/49_formal_dev1000/sft_dev1000_summary.json`.
+Answer F1 **0.6871** / EM 0.623 / Evidence 0.4575 / Joint 0.3843 / finish 1.0 / search **0.628** / internal 0.372 / gen 168.2.
+Same-split vs @400: F1 **+0.1289**, EM +0.127, Evidence +0.306, Joint +0.279. Confirm-only; official Δ_RL unchanged.
+
+**DONE 2026-08-19 Formal@200 @1000:** `FORMAL_V1_STEP200_FORMAL_DEV1000_SCORED`.
+Artifact: `Dee/results/49_formal_dev1000/formal200_dev1000_summary.json`.
+Answer F1 **0.808** / EM 0.732 / Evidence **0.7948** / Joint **0.6762** / finish 1.0 / search=1.0 / `p_search_2=0` / gen 225.3.
+Same-split rank so far by Answer F1: **@400 0.816 > @200 0.808 > SFT 0.6871**. @200 still wins Evidence/Joint (same pattern as frozen-dev@200). Do not change primary metric.
+
+Still missing on this same 1000: **Formal@600**.
+
+Report also (secondary, not for ranking):
+
+```text
+Answer EM
+Evidence / supporting-fact F1
+Evidence EM
+Joint F1
+Joint EM
+finish / parse / obs-mask / gen tokens
+```
+
+Joint uses Hotpot official form: `P_joint = P_ans * P_sp`, `R_joint = R_ans * R_sp`, then F1; `EM_joint = EM_ans * EM_sp`. Report-only.
+
+Health gate first: no format collapse, no broken tools. Then rank:
 
 1. Answer F1
 2. Evidence F1 if Answer F1 is tied
 3. More stable Finish / tool behavior
 4. Earlier checkpoint if still tied
 
-Then write `FINAL_POLICY` and open sealed Test **once**.
-Test answers generalization of the frozen model. It does not choose 600 vs 800.
+If 1000 still shows `@400` best vs SFT / @200 / @600: `FINAL_POLICY = global_step_400`. No more training.
+If @600 wins this split, do **not** invent a new gate and do **not** train to 800 — write the disagreement vs frozen-dev@200 and follow the ranking rule above.
+
+**Sealed test (once, after FINAL_POLICY only).** Pre-register the matrix before opening answers:
+
+```text
+Base Direct | Base RAG | SFT Agent | FINAL GRPO
+same sealed split, same vLLM det, same Harness v1
+report: Answer F1/EM, Evidence F1/EM, Joint F1/EM, finish, search, search₂, length
+```
+
+Δ_RL,test = F1_FINAL − F1_SFT. **Never pick a checkpoint from test.**
+
+After that: **Web zero-shot adapter, no train, no new policy actions.** Formal-v2 (dense Answer → GDPO → length/entropy) is a side branch only.
 
 ---
 
@@ -565,7 +622,8 @@ Main claim is **Δ_RL = Metric_GRPO − Metric_SFT**, not GRPO vs Base.
 | Formal-v1@600 (vLLM) | 0.717 | 0.59 | 0.6343 | 0.965 | autonomous |
 
 Base→SFT = learned to be an Agent.
-SFT→GRPO = on-policy Agentic RL improved the policy.
+SFT→GRPO = on-policy Agentic RL improved retrieval-grounded answering and evidence quality.
+Do not lead with “learned when not to search”: @400 search≈0.995 on this Hotpot setup.
 
 GRPO-smoke-20 is a **collapse check only** (128-set ~5 epoch ckpt, vLLM vs Gate 3 HF). Formal Δ_RL comes from Formal GRPO-v1 restarted at SFT merged. Do not fill that row from `global_step_20`.
 

@@ -1,0 +1,56 @@
+{
+  "gate": "FORMAL_V1_STEP200_FORMAL_DEV1000_SCORED",
+  "purpose": "Same-split Formal@200 confirm. Not official Δ_RL. Not FINAL_POLICY.",
+  "n": 1000,
+  "eval_file": "data/eval/hotpotqa_formal_dev_1000.jsonl",
+  "backend": "vllm_openai",
+  "protocol": "Harness v1, Candidate-BM25@5, T=0, max_search_turns=2",
+  "ckpt": "results/39_formal_grpo_v1/ckpt/global_step_200",
+  "hf_export": "results/40_hf_formal_grpo_step200/model_view",
+  "run_dir": "results/49_formal_dev1000/n1000_formal200/agent_rollout_n1000_20260819_224558_fd1000_n1000_formal200",
+  "elapsed_seconds": 2593.85,
+  "health": {
+    "finish_rate": 1.0,
+    "parse_ok_rate": 1.0,
+    "observation_mask_ok_rate": 1.0,
+    "internal_rate": 0.0,
+    "collapse": false
+  },
+  "formal_grpo200_formal_dev1000": {
+    "mean_token_f1": 0.808,
+    "mean_em": 0.732,
+    "mean_evidence_f1": 0.7948,
+    "mean_evidence_em": 0.515,
+    "mean_joint_f1": 0.6762,
+    "mean_joint_em": 0.422,
+    "search_rate": 1.0,
+    "p_search_2": 0.0,
+    "finish_rate": 1.0,
+    "mean_generated_tokens": 225.3
+  },
+  "same_split_table": {
+    "sft": {"f1": 0.6871, "em": 0.623, "evidence_f1": 0.4575, "joint_f1": 0.3843, "finish": 1.0, "search": 0.628, "gen": 168.2},
+    "formal200": {"f1": 0.808, "em": 0.732, "evidence_f1": 0.7948, "joint_f1": 0.6762, "finish": 1.0, "search": 1.0, "gen": 225.3},
+    "formal400": {"f1": 0.816, "em": 0.75, "evidence_f1": 0.7636, "joint_f1": 0.6634, "finish": 0.988, "search": 1.0, "gen": 288.0}
+  },
+  "answer_f1_rank_so_far": ["formal400", "formal200", "sft"],
+  "delta_400_minus_200": {"f1": 0.008, "em": 0.018, "evidence_f1": -0.0312, "joint_f1": -0.0128},
+  "behavior_vs_frozen_dev200_same_ckpt": {
+    "frozen_dev200": {"f1": 0.6988, "em": 0.545, "evidence_f1": 0.7727, "p_search_2": 0.0, "gen": 219.5},
+    "note": "search=1, p_search_2=0, gen≈225 vs 220. Policy shape matches. Absolute F1 is split, not gain."
+  },
+  "official_delta_rl_still": {
+    "split": "frozen-dev@200 vLLM det @400 vs SFT",
+    "f1": 0.0645,
+    "em": 0.075,
+    "evidence_f1": 0.2538
+  },
+  "not_unique_best_yet": true,
+  "missing_same_split_models": ["Formal@600"],
+  "do_not": [
+    "Freeze FINAL_POLICY before @600 on this 1000",
+    "Change primary metric because @200 Evidence/Joint is higher",
+    "Treat 0.808 / 0.816 as official paper numbers"
+  ],
+  "next": "Same-protocol Formal@600 formal-dev@1000. Then rank by Answer F1."
+}

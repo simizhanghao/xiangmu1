@@ -2,7 +2,7 @@
 
 冻结总计划（唯一执行线）：[PLAN.md](PLAN.md)。
 
-**当前进度（2026-08-19）：** Formal-v1@600 frozen-dev **NO_COLLAPSE，但 Answer 回落**。@400 仍领先：F1 **0.7338 / 0.717**，EM **0.62 / 0.59**，Evidence **0.748 / 0.634**。决策：**停 v1，不跑 800**。正式 Δ_RL 仍按 @400 vs SFT-vLLM：**F1 +6.45pp、EM +7.5pp、Evidence +25.4pp**。下一步：formal-dev 1000 确认后再冻 `FINAL_POLICY`。
+**当前进度（2026-08-19）：** Formal-v1 **停训**。正式 Δ_RL 仍是 frozen-dev@200（@400 vs SFT **+6.45pp F1**）。formal-dev@1000（确认集，非正式成绩）SFT **0.6871** / @200 **0.808** / @400 **0.816**。Answer F1 仍 @400 领先；@200 Evidence/Joint 更高。下一步：补 @600 同 1000 → 再冻 `FINAL_POLICY`。不改 GRPO。
 
 ## 项目目标
 
@@ -24,7 +24,8 @@ Qwen3-8B (dense, non-thinking)
   → Formal-v1@200 frozen-dev NO_COLLAPSE（首个正式里程碑）
   → Formal-v1@400 frozen-dev NO_COLLAPSE（当前领先）
   → Formal-v1@600 frozen-dev NO_COLLAPSE（Answer 回落；停 800）
-  → formal-dev 1000 确认 → FINAL_POLICY
+  → formal-dev 1000：@400 已评（行为稳定）；补 SFT/@200/@600 → FINAL_POLICY
+  → sealed Test 一次 → Web zero-shot（不训练）
 ```
 
 ## 2026-08-18 新结果（Gate 4 → Step B）
@@ -95,10 +96,10 @@ Qwen3-8B (dense, non-thinking)
 - Rollout：正式路径 **SGLang 0.5.5 + 官方 Decoupled Token-TIS**（`rollout_is=token`，threshold=2.0，无 RS，无 bypass）。Exact VeXact 只作 1-step 正确性锚。
 - Environment：Candidate-BM25 top-5、同一 `EcaSearchAgentLoop`、Harness v1。
 - Memory：actor param/optimizer offload = false。Exact 锚用 PP=4；正式 SGLang 用 TP=1。
-- Budget：正式终点 200/400/600/800；1000 不是 KPI。
-- 选模：先过 finish/format/observation-mask health gate，再按 Answer F1、Evidence F1、EM、少重复 query、较早 checkpoint。
-- Test：在唯一 best 冻结前禁止打开 sealed HotpotQA Test。
-- 能力边界：GRPO v1 可声称 routing / evidence / answer；**不可**声称 query reformulation 或 multi-hop（@400 的 `p_search_2=0.085` 只观察）。
+- Budget：Formal-v1 已在 600 停；**不跑 800**。1000 不是训练 KPI，是 formal-dev 确认集。
+- 选模：先过 finish/format/observation-mask health gate，再按 **Answer F1**（主）、Evidence F1、EM、少重复 query、较早 checkpoint。Joint F1 **只报告，不改选模**。
+- Test：formal-dev 1000 确认并写入 `FINAL_POLICY` 之前，禁止打开 sealed HotpotQA Test。
+- 能力边界：v1 主 claim 是 retrieval-grounded answering + evidence quality；**不要**把 adaptive routing 当主结论（@400 search≈0.995）。**不可**声称 query reformulation 或 multi-hop（`p_search_2=0.085` 只观察）。
 
 ## 目录
 

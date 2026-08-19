@@ -73,6 +73,42 @@ def _f1_single(prediction_tokens: List[str], gold_tokens: List[str]) -> float:
     return 2 * precision * recall / (precision + recall)
 
 
+def token_prf(
+    prediction: str,
+    gold_answers: Union[str, Sequence[str]],
+) -> Dict[str, float]:
+    """Token P/R/F1 after normalization; keep the gold with max F1 (Hotpot-style)."""
+    golds = _as_gold_list(gold_answers)
+    if not golds:
+        return {"precision": 0.0, "recall": 0.0, "f1": 0.0}
+    prediction_tokens = normalize_answer(prediction).split()
+    best = {"precision": 0.0, "recall": 0.0, "f1": -1.0}
+    for gold in golds:
+        gold_tokens = normalize_answer(gold).split()
+        if not prediction_tokens and not gold_tokens:
+            cand = {"precision": 1.0, "recall": 1.0, "f1": 1.0}
+        elif not prediction_tokens or not gold_tokens:
+            cand = {"precision": 0.0, "recall": 0.0, "f1": 0.0}
+        else:
+            common = Counter(prediction_tokens) & Counter(gold_tokens)
+            num_same = sum(common.values())
+            if num_same == 0:
+                cand = {"precision": 0.0, "recall": 0.0, "f1": 0.0}
+            else:
+                precision = num_same / len(prediction_tokens)
+                recall = num_same / len(gold_tokens)
+                cand = {
+                    "precision": precision,
+                    "recall": recall,
+                    "f1": 2 * precision * recall / (precision + recall),
+                }
+        if cand["f1"] > best["f1"]:
+            best = cand
+    if best["f1"] < 0:
+        return {"precision": 0.0, "recall": 0.0, "f1": 0.0}
+    return best
+
+
 def token_f1(
     prediction: str,
     gold_answers: Union[str, Sequence[str]],
@@ -82,14 +118,33 @@ def token_f1(
     Both sides empty -> 1.0 for that gold; exactly one side empty -> 0.0;
     an empty gold sequence yields 0.0 overall.
     """
-    golds = _as_gold_list(gold_answers)
-    if not golds:
-        return 0.0
-    prediction_tokens = normalize_answer(prediction).split()
-    return max(
-        _f1_single(prediction_tokens, normalize_answer(gold).split())
-        for gold in golds
-    )
+    return float(token_prf(prediction, gold_answers)["f1"])
+
+
+def hotpot_joint(
+    answer_em: float,
+    answer_precision: float,
+    answer_recall: float,
+    evidence_em: float,
+    evidence_precision: float,
+    evidence_recall: float,
+) -> Dict[str, float]:
+    """Official HotpotQA joint: product of answer and supporting-fact P/R.
+
+    Report-only. Do not use for checkpoint selection.
+    """
+    joint_precision = float(answer_precision) * float(evidence_precision)
+    joint_recall = float(answer_recall) * float(evidence_recall)
+    if joint_precision + joint_recall > 0:
+        joint_f1 = 2 * joint_precision * joint_recall / (joint_precision + joint_recall)
+    else:
+        joint_f1 = 0.0
+    return {
+        "joint_precision": joint_precision,
+        "joint_recall": joint_recall,
+        "joint_f1": joint_f1,
+        "joint_em": float(answer_em) * float(evidence_em),
+    }
 
 
 def count_search_steps(record: TraceRecord) -> int:

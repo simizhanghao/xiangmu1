@@ -1,0 +1,67 @@
+{
+  "gate": "FORMAL_V1_STEP400_FORMAL_DEV1000_SCORED",
+  "purpose": "Confirm-only split for unique-best. Not a replacement for frozen-dev@200 Δ_RL.",
+  "n": 1000,
+  "eval_file": "data/eval/hotpotqa_formal_dev_1000.jsonl",
+  "split_note": "IDs are leftover Hotpot distractor TRAIN (no overlap with frozen-dev val200 / sealed / 5K train). Absolute F1 is not comparable to frozen-dev@200.",
+  "backend": "vllm_openai",
+  "protocol": "Harness v1, Candidate-BM25@5, T=0, max_search_turns=2",
+  "ckpt": "results/39_formal_grpo_v1/ckpt/global_step_400",
+  "hf_export": "results/44_hf_formal_grpo_step400/model_view",
+  "run_dir": "results/49_formal_dev1000/n1000_formal400/agent_rollout_n1000_20260819_175758_fd1000_n1000_formal400",
+  "elapsed_seconds": 3297.06,
+  "health": {
+    "finish_rate": 0.988,
+    "parse_ok_rate": 1.0,
+    "observation_mask_ok_rate": 1.0,
+    "internal_rate": 0.0,
+    "collapse": false
+  },
+  "formal_grpo400_formal_dev1000": {
+    "mean_token_f1": 0.816,
+    "mean_em": 0.75,
+    "mean_evidence_f1": 0.7636,
+    "mean_evidence_em": 0.472,
+    "mean_joint_f1": 0.6634,
+    "mean_joint_em": 0.4,
+    "search_rate": 1.0,
+    "mean_search_count": 1.071,
+    "p_search_0": 0.0,
+    "p_search_1": 0.929,
+    "p_search_2": 0.071,
+    "p_search_ge3": 0.0,
+    "mean_duplicate_query_count": 0.041,
+    "finish_rate": 0.988,
+    "parse_ok_rate": 1.0,
+    "mean_generated_tokens": 288.0,
+    "mean_observation_tokens": 895.7
+  },
+  "behavior_vs_frozen_dev200_same_ckpt": {
+    "frozen_dev200": {
+      "mean_token_f1": 0.7338,
+      "mean_em": 0.62,
+      "mean_evidence_f1": 0.7477,
+      "finish_rate": 0.99,
+      "search_rate": 0.995,
+      "p_search_2": 0.085,
+      "mean_generated_tokens": 288.8
+    },
+    "note": "Search/length/evidence signature matches. Absolute Answer F1/EM are higher on this train-pool confirm split; do not rewrite official Δ_RL."
+  },
+  "official_delta_rl_still": {
+    "split": "frozen-dev@200 vLLM det",
+    "f1": 0.0645,
+    "em": 0.075,
+    "evidence_f1": 0.2538
+  },
+  "not_unique_best_yet": true,
+  "missing_same_split_models": ["SFT-vLLM", "Formal@200", "Formal@600"],
+  "do_not": [
+    "Treat 0.816 as the paper Δ_RL numerator",
+    "Freeze FINAL_POLICY before SFT/@200/@600 on this same 1000",
+    "Open sealed test",
+    "Claim multi-hop from p_search_2=0.071",
+    "Compare 0.816 vs 0.7338 as a model gain"
+  ],
+  "next": "Same protocol formal-dev@1000 for SFT-vLLM, then @200, then @600. Rank by Answer F1 only after all four are in."
+}

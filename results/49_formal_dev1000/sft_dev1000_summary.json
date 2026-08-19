@@ -1,0 +1,63 @@
+{
+  "gate": "SFT_VLLM_FORMAL_DEV1000_SCORED",
+  "purpose": "Same-split SFT baseline for formal-dev 1000 confirm. Not official Δ_RL.",
+  "n": 1000,
+  "eval_file": "data/eval/hotpotqa_formal_dev_1000.jsonl",
+  "backend": "vllm_openai",
+  "protocol": "Harness v1, Candidate-BM25@5, T=0, max_search_turns=2",
+  "model": "outputs/22_sft_qwen3_8b_merged",
+  "run_dir": "results/49_formal_dev1000/n1000_sft/agent_rollout_n1000_20260819_215700_fd1000_n1000_sft",
+  "elapsed_seconds": 1939.22,
+  "health": {
+    "finish_rate": 1.0,
+    "parse_ok_rate": 1.0,
+    "observation_mask_ok_rate": 1.0,
+    "internal_rate": 0.372,
+    "collapse": false
+  },
+  "sft_vllm_formal_dev1000": {
+    "mean_token_f1": 0.6871,
+    "mean_em": 0.623,
+    "mean_evidence_f1": 0.4575,
+    "mean_evidence_em": 0.256,
+    "mean_joint_f1": 0.3843,
+    "mean_joint_em": 0.226,
+    "search_rate": 0.628,
+    "internal_rate": 0.372,
+    "p_search_0": 0.372,
+    "p_search_1": 0.627,
+    "p_search_2": 0.001,
+    "finish_rate": 1.0,
+    "mean_generated_tokens": 168.2
+  },
+  "formal400_same_split": {
+    "mean_token_f1": 0.816,
+    "mean_em": 0.75,
+    "mean_evidence_f1": 0.7636,
+    "mean_joint_f1": 0.6634,
+    "finish_rate": 0.988,
+    "search_rate": 1.0,
+    "mean_generated_tokens": 288.0
+  },
+  "same_split_delta_400_minus_sft": {
+    "f1": 0.1289,
+    "em": 0.127,
+    "evidence_f1": 0.3061,
+    "joint_f1": 0.2791,
+    "search_rate": 0.372
+  },
+  "official_delta_rl_still": {
+    "split": "frozen-dev@200 vLLM det",
+    "f1": 0.0645,
+    "em": 0.075,
+    "evidence_f1": 0.2538
+  },
+  "not_unique_best_yet": true,
+  "missing_same_split_models": ["Formal@200", "Formal@600"],
+  "do_not": [
+    "Treat 0.6871 or 0.816 as official paper numbers",
+    "Freeze FINAL_POLICY before @200 and @600 on this 1000",
+    "Rewrite Δ_RL from this train-pool confirm split"
+  ],
+  "next": "Same-protocol Formal@200 formal-dev@1000."
+}

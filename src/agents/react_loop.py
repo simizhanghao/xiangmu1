@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
-from src.eval.metrics import basic_metrics, exact_match, token_f1
+from src.eval.metrics import basic_metrics, exact_match, hotpot_joint, token_f1, token_prf
 from src.eval.protocol import score_evidence_use
 from src.eval.trace_schema import (
     EXPECTED_LOSS_MASK,
@@ -49,6 +49,7 @@ class RolloutConfig:
     max_new_tokens: int = 512
     max_rounds: int = 8
     temperature: float = 0.0
+    top_p: float = 1.0
     system_prompt: str = AGENT_SYSTEM_PROMPT
 
 
@@ -220,14 +221,23 @@ def make_vllm_generate_fn(llm: Any) -> GenerateFn:
     """vLLM backend: consume already-rendered Harness v1 prompts. No chat template."""
     from vllm import SamplingParams
 
-    def _fn(prompt: str, *, max_new_tokens: int, temperature: float) -> Tuple[str, int, int]:
+    def _fn(
+        prompt: str,
+        *,
+        max_new_tokens: int,
+        temperature: float,
+        top_p: float = 1.0,
+        seed: Optional[int] = None,
+    ) -> Tuple[str, int, int]:
         kwargs: Dict[str, Any] = {
             "temperature": 0.0 if temperature <= 0 else float(temperature),
             "max_tokens": int(max_new_tokens),
             "stop": list(_STOP_STRINGS),
         }
         if temperature > 0:
-            kwargs["top_p"] = 1.0
+            kwargs["top_p"] = float(top_p)
+        if seed is not None:
+            kwargs["seed"] = int(seed)
         try:
             params = SamplingParams(**kwargs, include_stop_str_in_output=True)
         except TypeError:
@@ -249,7 +259,14 @@ def make_openai_completions_fn(base_url: str, model: str) -> GenerateFn:
 
     url = base_url.rstrip("/") + "/completions"
 
-    def _fn(prompt: str, *, max_new_tokens: int, temperature: float) -> Tuple[str, int, int]:
+    def _fn(
+        prompt: str,
+        *,
+        max_new_tokens: int,
+        temperature: float,
+        top_p: float = 1.0,
+        seed: Optional[int] = None,
+    ) -> Tuple[str, int, int]:
         payload: Dict[str, Any] = {
             "model": model,
             "prompt": prompt,
@@ -258,6 +275,10 @@ def make_openai_completions_fn(base_url: str, model: str) -> GenerateFn:
             "stop": list(_STOP_STRINGS),
             "include_stop_str_in_output": True,
         }
+        if temperature > 0:
+            payload["top_p"] = float(top_p)
+        if seed is not None:
+            payload["seed"] = int(seed)
         req = Request(
             url,
             data=json.dumps(payload).encode("utf-8"),
@@ -282,11 +303,19 @@ def _generate_until_action(
     max_new_tokens: int,
     temperature: float,
     generate_fn: Optional[GenerateFn] = None,
+    top_p: float = 1.0,
+    seed: Optional[int] = None,
 ) -> Tuple[str, int, int]:
     """One generate call; stop at first closed action tag when supported."""
     prompt = render_nothink_prompt(tokenizer, messages)
     if generate_fn is not None:
-        return generate_fn(prompt, max_new_tokens=max_new_tokens, temperature=temperature)
+        return generate_fn(
+            prompt,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            seed=seed,
+        )
     if model is None:
         raise ValueError("HF generate needs a model when generate_fn is None")
     inputs = tokenizer(prompt, return_tensors="pt")
@@ -301,6 +330,7 @@ def _generate_until_action(
     }
     if temperature > 0:
         gen_kwargs["temperature"] = temperature
+        gen_kwargs["top_p"] = top_p
 
     try:
         out_ids = model.generate(
@@ -323,6 +353,7 @@ def run_search_agent_rollout(
     tokenizer: PreTrainedTokenizerBase,
     config: Optional[RolloutConfig] = None,
     generate_fn: Optional[GenerateFn] = None,
+    generation_seed: Optional[int] = None,
 ) -> RolloutResult:
     cfg = config or RolloutConfig()
     if generate_fn is None and model is None:
@@ -358,6 +389,8 @@ def run_search_agent_rollout(
             max_new_tokens=cfg.max_new_tokens,
             temperature=cfg.temperature,
             generate_fn=generate_fn,
+            top_p=cfg.top_p,
+            seed=generation_seed,
         )
         raw_gens.append(chunk)
         prompt_tokens += ptok
@@ -471,6 +504,8 @@ def run_search_agent_rollout(
                 max_new_tokens=cfg.max_new_tokens,
                 temperature=cfg.temperature,
                 generate_fn=generate_fn,
+                top_p=cfg.top_p,
+                seed=None if generation_seed is None else generation_seed + 17,
             )
             raw_gens.append(chunk2)
             prompt_tokens += ptok2
@@ -576,14 +611,28 @@ def run_search_agent_rollout(
     if not finished:
         errors.append("rollout_unfinished_no_answer")
 
+    ans_prf = token_prf(pred, gold) if pred else {"precision": 0.0, "recall": 0.0, "f1": 0.0}
+    ev_p = float((evid_meta or {}).get("evidence_precision") or 0.0)
+    ev_r = float((evid_meta or {}).get("evidence_recall") or 0.0)
+    ev_f1 = float((evid_meta or {}).get("evidence_f1") or 0.0)
+    ev_em = 1.0 if ev_p >= 1.0 and ev_r >= 1.0 and ev_f1 >= 1.0 else 0.0
+    ans_em = exact_match(pred, gold) if pred else 0.0
+    joint = hotpot_joint(ans_em, ans_prf["precision"], ans_prf["recall"], ev_em, ev_p, ev_r)
     m = {
-        "exact_match": exact_match(pred, gold) if pred else 0.0,
-        "token_f1": token_f1(pred, gold) if pred else 0.0,
+        "exact_match": ans_em,
+        "token_f1": float(ans_prf["f1"]),
+        "token_precision": float(ans_prf["precision"]),
+        "token_recall": float(ans_prf["recall"]),
         "finished": float(finished),
         "search_count": float(cost.search_count),
         "duplicate_query_count": float(cost.duplicate_query_count),
         "format_valid": float(len([e for e in errors if "rollout_unfinished" not in e]) == 0),
-        "evidence_f1": float((evid_meta or {}).get("evidence_f1") or 0.0),
+        "evidence_f1": ev_f1,
+        "evidence_precision": ev_p,
+        "evidence_recall": ev_r,
+        "evidence_em": ev_em,
+        "joint_f1": float(joint["joint_f1"]),
+        "joint_em": float(joint["joint_em"]),
     }
     if finished and pred:
         try:
@@ -593,6 +642,16 @@ def run_search_agent_rollout(
             m["format_valid"] = float(bm.get("format_valid", m["format_valid"]))
         except Exception:
             pass
+        joint = hotpot_joint(
+            m["exact_match"],
+            m["token_precision"],
+            m["token_recall"],
+            ev_em,
+            ev_p,
+            ev_r,
+        )
+        m["joint_f1"] = float(joint["joint_f1"])
+        m["joint_em"] = float(joint["joint_em"])
 
     return RolloutResult(
         trace=trace,

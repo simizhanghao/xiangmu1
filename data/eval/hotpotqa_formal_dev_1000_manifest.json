@@ -1,0 +1,13 @@
+{
+  "gate": "FORMAL_DEV_1000_EXPORT_PASS",
+  "n": 1000,
+  "eval_file": "/data1/hcc/deepresearch/Dee/data/eval/hotpotqa_formal_dev_1000.jsonl",
+  "ids_file": "/data1/hcc/deepresearch/Dee/data/rl/formal_5k/formal_dev_ids.txt",
+  "pool": "/data1/hcc/deepresearch/data/sft/source/hotpotqa_distractor_train_pool_n8000.jsonl",
+  "overlap_train": 0,
+  "overlap_frozen_dev": 0,
+  "overlap_sealed": 0,
+  "first_id": "hotpotqa_distractor_train_5abe77eb5542993f32c2a123",
+  "last_id": "hotpotqa_distractor_train_5ab547e35542997d4ad1f0ea",
+  "note": "Confirm-only split. Does not replace frozen-dev@200. Do not use for selection until all four models are scored."
+}
