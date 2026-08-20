@@ -31,7 +31,7 @@ from src.tools.candidate_bm25 import (
     retrieve_candidate_bm25,
 )
 
-_STOP_STRINGS = ("</search>", "</answer>", "</internal>")
+_STOP_STRINGS = ("</search>", "</answer>", "</internal>", "</evidence>")
 
 _TAG_BODY = {
     "think": re.compile(r"<think>(.*?)</think>", re.DOTALL | re.IGNORECASE),
@@ -47,6 +47,8 @@ class RolloutConfig:
     top_k: int = 5
     max_search_turns: int = 2
     max_new_tokens: int = 512
+    max_evidence_tokens: int = 512
+    max_answer_tokens: int = 256
     max_rounds: int = 8
     temperature: float = 0.0
     top_p: float = 1.0
@@ -72,6 +74,13 @@ _FORMAT_NUDGE = (
     "Your last message had no closed action tag. "
     "Reply with either <search>query</search> or "
     "<answer>short answer</answer> only."
+)
+_FINALIZE_NUDGE = (
+    "Search budget is used up. Do not output <search>. "
+    "Write <evidence> if needed, then <answer>short answer</answer>."
+)
+_ANSWER_ONLY_NUDGE = (
+    "Now give only the final answer in <answer>...</answer>."
 )
 
 
@@ -166,6 +175,26 @@ def _recover_loose_answer(text: str) -> Optional[str]:
     m = _LOOSE_ANSWER_RE.search(text or "")
     body = (m.group(1).strip() if m else "")
     return body or None
+
+
+def _recover_open_evidence(text: str) -> Optional[str]:
+    """Unclosed <evidence> body after the evidence budget is exhausted."""
+    raw = text or ""
+    low = raw.lower()
+    if "<evidence>" not in low or "</evidence>" in low:
+        return None
+    idx = low.find("<evidence>")
+    body = raw[idx + len("<evidence>") :].strip()
+    return body or None
+
+
+def _token_budget(phase: str, cfg: RolloutConfig) -> int:
+    """Search actions share max_new_tokens; finalize splits evidence vs answer."""
+    if phase == "answer":
+        return int(cfg.max_answer_tokens)
+    if phase == "evidence":
+        return int(cfg.max_evidence_tokens)
+    return int(cfg.max_new_tokens)
 
 
 def _first_action(tags: Dict[str, List[str]]) -> Optional[str]:
@@ -380,13 +409,41 @@ def run_search_agent_rollout(
     route_first = "none"
     hit_max_search = False
     format_nudge_used = False
+    finalize_only = False
+    phase = "act"  # act | evidence | answer
+    answer_reserve_used = False
+
+    def _go_answer_reserve(chunk: str) -> bool:
+        nonlocal finalize_only, phase, answer_reserve_used
+        if answer_reserve_used:
+            return False
+        messages.append({"role": "assistant", "content": chunk})
+        messages.append({"role": "user", "content": _ANSWER_ONLY_NUDGE})
+        finalize_only = True
+        phase = "answer"
+        answer_reserve_used = True
+        return True
+
+    def _keep_truncated_evidence(chunk: str, tags: Dict[str, List[str]]) -> None:
+        open_ev = _recover_open_evidence(chunk)
+        if not open_ev or tags.get("evidence"):
+            return
+        steps.append(
+            TraceStep(
+                step_id=len(steps),
+                step_type="evidence",
+                content=open_ev,
+                loss_mask=True,
+                metadata={"truncated_evidence": True},
+            )
+        )
 
     for _round in range(cfg.max_rounds):
         chunk, ptok, gtok = _generate_until_action(
             model,
             tokenizer,
             messages,
-            max_new_tokens=cfg.max_new_tokens,
+            max_new_tokens=_token_budget(phase, cfg),
             temperature=cfg.temperature,
             generate_fn=generate_fn,
             top_p=cfg.top_p,
@@ -409,6 +466,22 @@ def run_search_agent_rollout(
                 route_first = "search"
 
         if action is None:
+            closed_ev = "evidence" in tags
+            open_ev = _recover_open_evidence(chunk)
+            search_exhausted = (
+                finalize_only
+                or phase in ("evidence", "answer")
+                or search_turns >= cfg.max_search_turns
+            )
+            # Closed evidence = model chose to finalize. Unclosed evidence
+            # only finalizes after the search budget is gone; otherwise it
+            # would turn a second-search attempt into a 1-search answer.
+            if closed_ev or (open_ev and search_exhausted):
+                _append_policy_steps(steps, chunk)
+                _keep_truncated_evidence(chunk, tags)
+                if phase == "answer" or not _go_answer_reserve(chunk):
+                    break
+                continue
             loose = _recover_loose_answer(chunk)
             if loose:
                 steps.append(
@@ -432,6 +505,12 @@ def run_search_agent_rollout(
                         metadata={"unparsed_chunk": True},
                     )
                 )
+            if phase == "answer":
+                break
+            if finalize_only or phase == "evidence":
+                if not _go_answer_reserve(chunk):
+                    break
+                continue
             if not format_nudge_used:
                 format_nudge_used = True
                 messages.append({"role": "assistant", "content": chunk})
@@ -449,24 +528,23 @@ def run_search_agent_rollout(
             if "answer" in tags:
                 finished = True
                 break
-            messages.append({"role": "assistant", "content": chunk})
-            messages.append(
-                {
-                    "role": "user",
-                    "content": (
-                        "You chose <internal>. Now give the final answer in "
-                        "<answer>...</answer> (optionally with short <think>)."
-                    ),
-                }
-            )
+            if phase == "answer" or not _go_answer_reserve(chunk):
+                break
+            continue
+
+        if finalize_only or search_turns >= cfg.max_search_turns or phase != "act":
+            hit_max_search = True
+            while steps and steps[-1].step_type == "search":
+                steps.pop()
+            for i, st in enumerate(steps):
+                st.step_id = i
+            if phase == "answer" or not _go_answer_reserve(chunk):
+                break
             continue
 
         query = tags["search"][-1]
         search_queries.append(query)
         search_turns += 1
-        if search_turns > cfg.max_search_turns:
-            hit_max_search = True
-            break
 
         packed = retrieve_candidate_bm25(sample, query, top_k=cfg.top_k)
         docs = list(packed.get("documents") or [])
@@ -495,47 +573,10 @@ def run_search_agent_rollout(
 
         messages.append({"role": "assistant", "content": chunk})
         messages.append({"role": "observation", "content": obs_body})
-
         if search_turns >= cfg.max_search_turns:
-            chunk2, ptok2, gtok2 = _generate_until_action(
-                model,
-                tokenizer,
-                messages,
-                max_new_tokens=cfg.max_new_tokens,
-                temperature=cfg.temperature,
-                generate_fn=generate_fn,
-                top_p=cfg.top_p,
-                seed=None if generation_seed is None else generation_seed + 17,
-            )
-            raw_gens.append(chunk2)
-            prompt_tokens += ptok2
-            generated_tokens += gtok2
-            tags2 = _extract_closed_tags(chunk2)
-            loose2 = _recover_loose_answer(chunk2)
-            if "search" in tags2 and "answer" not in tags2 and not loose2:
-                hit_max_search = True
-            _append_policy_steps(
-                steps,
-                chunk2,
-                prefer_order=("think", "evidence", "answer", "internal"),
-            )
-            if "answer" not in tags2 and loose2:
-                steps.append(
-                    TraceStep(
-                        step_id=len(steps),
-                        step_type="answer",
-                        content=loose2,
-                        loss_mask=True,
-                        metadata={"loose_answer": True},
-                    )
-                )
-            while steps and steps[-1].step_type == "search":
-                steps.pop()
-                for i, st in enumerate(steps):
-                    st.step_id = i
-            if any(s.step_type == "answer" for s in steps):
-                finished = True
-            break
+            finalize_only = True
+            phase = "evidence"
+        continue
 
     if not any(s.step_type == "answer" for s in steps):
         steps.append(

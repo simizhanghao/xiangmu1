@@ -39,19 +39,22 @@ Dee/model Qwen3-8B
 [6] Formal-v1 GRPO 200 → 400 → 600 (STOP; no 800)
         │
         ▼
-[7] formal-dev 1000 confirm (SFT / @200 / @400 / @600, same vLLM)
+[7] formal-dev 1000 confirm → Best Controlled Policy = GRPO step400
         │
         ▼
-[8] FINAL_POLICY + Sealed Test once
+[7.5] Light behavior audit (already-search vs always-search)
         │
         ▼
-====== FINAL POLICY FREEZE ======
+[8] Held-out test once: Direct / Fixed-RAG / SFT / GRPO@400
         │
         ▼
-[9] Live-Web zero-shot (no train)
+====== CONTROLLED AGENT DONE ======
         │
         ▼
-[10] Controlled + Web Evaluation
+[9] Live-Web adapter (same policy, no train, no new actions)
+        │
+        ▼
+[10] Controlled BM25 vs Web zero-shot
         │
         ▼
 [11] Interview / README / Demo
@@ -69,18 +72,24 @@ Do not mix RL gains with search-backend gains.
 ```text
 8B Contract → Compatibility → 8B relabel / SFT v2 → SFT → SFT Eval
   → GRPO Smoke → Throughput → 200/400/600 (stop)
-  → formal-dev 1000 confirm → FINAL POLICY → sealed Test once
+  → formal-dev 1000 confirm → Best Controlled Policy = step400
+  → light search-gain audit → held-out test once
+  (Direct / Fixed-RAG / SFT / GRPO@400)
 ```
 
 ### Milestone B — Same policy, Live Web
 
 ```text
-Policy Freeze → SEARCH/OPEN/FIND → Evidence Workspace
-  → Context Management → Citation → Trace Viewer
-  → Web Eval → README / Demo → STOP
+@400 frozen
+  → Web adapter (tool-internal SEARCH / fetch / extract)
+  → still <search> + <tool_response>
+  → Controlled BM25 vs Web zero-shot
+  → README / Demo → STOP
 ```
 
-Web starts only after unique best + sealed Test + Final Policy Freeze.
+Do **not** add `<open>` / `<find>` on v1 Web. Do **not** retrain.
+
+Web starts only after Best Controlled Policy freeze + light audit + held-out test.
 
 ---
 
@@ -108,7 +117,7 @@ Do not reopen these while executing Gates 0–8.
 | Formal budget | 200 / 400 / 600 / 800. **1000 is not a KPI.** |
 | GPUs | physical 0–1–2–3 only |
 | Test | sealed HotpotQA Test stays unread until unique best is frozen |
-| Web | PAUSED until Final Policy Freeze |
+| Web | PAUSED until held-out test of GRPO@400 |
 | Fallbacks | Qwen3-8B → Qwen2.5-7B-Instruct (framework fail) → Qwen3-4B (throughput RED) |
 
 Do **not** reuse the 30B LoRA adapter. Do **not** regenerate Gold / BM25. Do **not** let Kimi write full 4550 Agent trajectories.
@@ -129,7 +138,7 @@ Do **not** reuse the 30B LoRA adapter. Do **not** regenerate Gold / BM25. Do **n
 | **5 Throughput** | 20 consecutive steps on the **128** set | 800 is deliverable | Gate 5.5 |
 | **5.5 Formal data** | Build HotpotQA-5K train + formal-dev 1000; keep 128 as smoke | Formal RL contract exists | Gate 6 |
 | **6 GRPO** | 200→400→600 on **5K**, fast-dev 200 each; **no 800** | RL improves the Agent; sweet spot @400 | Gate 7 |
-| **7 Selection** | formal-dev 1000 confirm (4 models, same vLLM) → unique best → sealed Test once | Final Agent Policy | Web zero-shot |
+| **7 Selection** | 1000 confirm → freeze **Best Controlled Policy = GRPO step400** → light audit → held-out test once (Direct / RAG / SFT / GRPO) | Controlled Agent done | Web zero-shot adapter |
 
 One gate at a time. No new research line.
 
@@ -501,7 +510,7 @@ That split exists only to debug leakage, Candidate-BM25, reward, AgentLoop, and 
 
 Why 5K, not 90K or 128: recent search-agent RL (s3) shows a few thousand examples can train a search policy; 5K is conservative vs 2.4K and ~40× the smoke set. 800 steps × global batch 32 ≈ 25.6K prompt instances → ~5 repeats/question on 5K, vs ~200 repeats on 128.
 
-OOD (2Wiki / MuSiQue / Bamboogle) and Web stay after Final Policy Freeze. Do not build the 5K set during Gate 2–5.
+OOD (2Wiki / MuSiQue / Bamboogle) and Web stay after held-out test. Do not build the 5K set during Gate 2–5.
 
 ## Gate 6 — Formal GRPO
 
@@ -530,7 +539,7 @@ vs Formal-v1@400: F1 **−0.0168**, EM **−0.03**, Evidence **−0.1134**, fini
 
 **600 decision = STOP_V1_NO_800.** Not a trainer/TIS/SGLang bug. Reading: 5K × batch 32 reaches ~2.56 epochs at 400 and ~3.84 at 600. Train surrogate (Evidence-driven, `ans_nz=0`) kept optimizing while greedy Answer/Evidence/finish fell and generations doubled (289→619) as entropy collapsed (0.014→0.0085). That is over-optimization / verbosity degeneration on a peaked policy, not a system failure.
 
-Current leader = `global_step_400`. Confirm on formal-dev 1000 before `FINAL_POLICY`. Do **not** train 800. Do **not** change reward / GDPO / DAPO on this line.
+**Best Controlled Policy = GRPO step400** after 1000 confirm. Do **not** train 800. Do **not** change reward / GDPO / DAPO on this line.
 
 Formal-v2 is a **side branch after freeze**, not a replacement for v1. Order if opened later: **A unique RL data 5K→10K/20K → B dense Answer reward → C GDPO only if multi-reward still drowns Answer → D Clip-Higher / soft overlong only if 289→619 repeats**. One variable per step. Do not swap GSPO/DPPO/OPO to “fix” this signal.
 
@@ -538,9 +547,92 @@ Main claim for v1: Agentic GRPO improved **autonomous retrieval-grounded answeri
 
 ---
 
-## Gate 7 — formal-dev 1000 confirm, then sealed Test
+## Gate 7 — Best Controlled Policy freeze + light audit + held-out test
 
-**NOW.** Do not train. Do not open v2 / GDPO / DAPO. Do not retune Formal-v1.
+**NOW = MULTITURN_CAPABILITY_AUDIT on all search=2 (n=54).** Evaluator is fair. Do not train. Do not start Direct/RAG/SFT/Web yet.
+
+**DONE 2026-08-20 finalize-v2b held-out 500:** `HELDOUT_GRPO400_DONE`.
+`results/51_heldout_test/n500_grpo400_finalize_v2b/.../summary.json`. 1802s.
+F1 **0.7506** / EM **0.670** / Ev **0.7243** / Joint **0.5804** / finish **1.0** / `p_search_2=0.108` / gen 312.7.
+Unfinished **0/54 search=2 = 0%** (old 22.2%, v1 20.4%). F1 not down vs 0.7493.
+This is a **corrected eval**, not a new policy. Still a held-out regression set, not Δ_RL,test.
+
+**DONE 2026-08-20 finalize-v2b n=11 (the v1 unfinished set):**
+`search=2` on **11/11**, finish **11/11**, parse/obs-mask 1.0. Duplicate query **0.818**. EM/F1 **0.3636 / 0.4242** (same as v2a 1-search finish — preview: extra hop may not add answer gain). This is the reserved-answer contract, not a policy upgrade.
+
+**DONE 2026-08-20 finalize-fix n=8:** same first 8 sealed IDs as the broken-harness smoke.
+Old: F1 0.65 / EM 0.50 / Ev 0.75; item1 `search=2 EM=0`.
+New: F1 **0.775** / EM **0.625** / Ev **0.7917**; item1 `search=2 EM=1`. finish=1.0. Protocol healthy. n=8 is not the test score.
+
+**Multi-turn claim (locked wording):**
+Level 1 tool re-use is shown (`p_search_2=0.108` on held-out 500). Levels 2–4 (query novelty, obs-conditioned rewrite, stop-when-enough) are **not** established. Say: *GRPO induced second-search execution; adaptive multi-hop is not yet proven.*
+
+**DONE 2026-08-20 finalize-fix v1 n=500:** `FINALIZE_FIX_V1_INSUFFICIENT`.
+`results/51_heldout_test/n500_grpo400_finalize_fix/.../summary.json`. 1801s.
+F1 **0.7392** / EM **0.660** / Ev 0.7132 / finish 0.978 / `p_search_2=0.108`.
+Unfinished **11/54 search=2 = 20.4%** (old 12/54=22.2%). F1 down vs 0.7493.
+V1 only added one extra generate; evidence and answer still share 512 tokens.
+This 500 is a **held-out regression set**, not a pristine sealed test.
+
+**finalize-v2 (eval only):** after search2, `phase=evidence` (512, stop `</evidence>`), then reserved `phase=answer` (256). No 3rd search. No gold answers.
+
+**Order (locked 2026-08-20):**
+```text
+held-out@500 raw              DONE (search2 unfinished 22.2%)
+        ↓
+finalize-v1 + same 500        DONE → V1_INSUFFICIENT (20.4%)
+        ↓
+finalize-v2b split budgets    DONE on the 11 unfinished IDs
+        ↓
+rerun @400 same 500           DONE (finish 1.0, search2 unf 0/54, F1 0.7506)
+        ↓
+MULTITURN_CAPABILITY_AUDIT     ← this step
+        ↓
+MULTITURN_CAPABILITY_AUDIT (all search=2)
+  novelty / obs1-dependence / new evidence / forced-1-search ΔF1
+        ↓
+held-out four arms: Direct / RAG / SFT / GRPO@400
+        ↓
+Controlled close → Web zero-shot (or MultiTurn/Web-v2 if mostly duplicate)
+```
+
+**DONE 2026-08-20 held-out GRPO@400 n=500:** `HELDOUT_GRPO400_DONE`.
+`results/51_heldout_test/n500_grpo400/.../summary.json`. 1789s.
+Answer F1 **0.7493** / EM **0.668** / Evidence **0.7132** / Joint **0.5825** / finish **0.976** / search=1.0 / `p_search_2=0.108` / gen **312.5**.
+Not Δ_RL,test until SFT is on the same 500.
+
+**Harness finding (from metrics + `react_loop.py`, confirm with audit script):**
+12 unfinished, **all search=2**. search=1 unfinished = 0 / 446. search=2 unfinished = 12 / 54 (**22.2%**).
+After 2nd obs the loop does **one** generate then `break`. Stop strings are `</search></answer></internal>` — **not** `</evidence>`. Unfinished gens are ~1060–1100 tok (≈ two short searches + one 512-token evidence dump). `hit_max_search_turns` is false on all 12: not a 3rd-search cap, a **missing forced answer phase**.
+Do **not** retrain @400. Fix inference loop only, then rerun the same 500.
+
+**DONE 2026-08-20 held-out smoke n=8:** `HELDOUT_SMOKE_PASS`. Same sealed file, vLLM det. finish=1.0 / parse=1.0 / obs-mask=1.0 / F1=0.65 / EM=0.5 / Evidence=0.75 / gen=294 / search=1.0. Protocol healthy. Do **not** treat n=8 F1 as the test score.
+
+**Locked 2026-08-20 — do not chase selective search on this line.**
+Always-search is a known limitation of Formal-v1, not the explanation of +6.45pp (65% of Answer F1 is on SFT-already-search items). Do **not** reopen uniform search penalty, static router, confidence gate, or Routing-v2. Those stay an optional **Efficient-Agent-v2 after Web**, only if live latency/cost actually hurts. Do not train. Do not open GDPO / DAPO. Do not retune Formal-v1.
+
+**Best Controlled Policy = GRPO step400** (`results/39_formal_grpo_v1/ckpt/global_step_400`).
+`STOP_V1_NO_800` stays. Do not treat “FINAL_POLICY” as a paper term; this is the project best checkpoint.
+
+Next project order (locked):
+
+```text
+Best Controlled Policy = GRPO step400
+        ↓
+light audit (existing metrics only)
+  already-search vs always-search
+  @400-right / @200-wrong
+  @600 length 288→609
+        ↓
+held-out test once
+  Base Direct / Fixed RAG / SFT Agent / GRPO@400
+  same split, same vLLM, same Harness v1
+  do not pick a checkpoint from test
+        ↓
+Controlled Agent stage done
+        ↓
+Web adapter (no train, no new actions)
+```
 
 Protocol (locked):
 
@@ -568,7 +660,12 @@ Artifact: `Dee/results/49_formal_dev1000/formal200_dev1000_summary.json`.
 Answer F1 **0.808** / EM 0.732 / Evidence **0.7948** / Joint **0.6762** / finish 1.0 / search=1.0 / `p_search_2=0` / gen 225.3.
 Same-split rank so far by Answer F1: **@400 0.816 > @200 0.808 > SFT 0.6871**. @200 still wins Evidence/Joint (same pattern as frozen-dev@200). Do not change primary metric.
 
-Still missing on this same 1000: **Formal@600**.
+**DONE 2026-08-20 Formal@600 @1000:** `FORMAL_V1_STEP600_FORMAL_DEV1000_SCORED`.
+Artifact: `Dee/results/49_formal_dev1000/formal600_dev1000_summary.json`.
+Answer F1 **0.7985** / EM 0.729 / Evidence 0.619 / Joint 0.5253 / finish 0.984 / search=1.0 / `p_search_2=0.054` / gen **609**.
+vs @400: F1 **−0.0175**, EM −0.021, Evidence **−0.145**, Joint **−0.138**, gen 288→609.
+
+**1000 decision = CASE_A, now frozen.** Answer F1 rank: **@400 0.816 > @200 0.808 > @600 0.7985 > SFT 0.6871**. No split reversal. **Best Controlled Policy = GRPO step400.**
 
 Report also (secondary, not for ranking):
 
@@ -590,26 +687,52 @@ Health gate first: no format collapse, no broken tools. Then rank:
 3. More stable Finish / tool behavior
 4. Earlier checkpoint if still tied
 
-If 1000 still shows `@400` best vs SFT / @200 / @600: `FINAL_POLICY = global_step_400`. No more training.
-If @600 wins this split, do **not** invent a new gate and do **not** train to 800 — write the disagreement vs frozen-dev@200 and follow the ranking rule above.
+@200 = strongest grounding so far; @400 = strongest final answer. That is expected. Do not swap primary to Joint/Evidence.
 
-**Sealed test (once, after FINAL_POLICY only).** Pre-register the matrix before opening answers:
+**@600@1000 decision (locked before seeing the number):**
+
+- **A — @400 still Answer F1 #1:** freeze **Best Controlled Policy = GRPO step400**. No more Formal-v1 train.
+- **B — @600 ≈ @400 (no clear win):** still pick **@400**.
+- **C — @600 clearly beats @400:** do **not** auto-switch to 600, do **not** train 800. (Did not happen.)
+
+Observed: **A**. Held-out test is one final unread split after the audit, not a paper preregistration ritual. Run four arms **once**:
 
 ```text
-Base Direct | Base RAG | SFT Agent | FINAL GRPO
-same sealed split, same vLLM det, same Harness v1
-report: Answer F1/EM, Evidence F1/EM, Joint F1/EM, finish, search, search₂, length
+split: data/sealed/hotpotqa_test500.jsonl   (n=500, first open)
+Base Direct | Fixed RAG     = HF greedy, scripts/run_controlled_baseline.py (Gate 3 protocol)
+SFT Agent   | GRPO@400      = vLLM det + Harness v1 (same as official Δ_RL)
+smoke first: scripts/run_heldout_smoke.sh   (GRPO@400 n=8)
+then each arm once at n=500. Never pick a checkpoint from test.
 ```
 
-Δ_RL,test = F1_FINAL − F1_SFT. **Never pick a checkpoint from test.**
+Δ_RL,test = F1_GRPO400 − F1_SFT. **Never pick a checkpoint from test.**
 
-After that: **Web zero-shot adapter, no train, no new policy actions.** Formal-v2 (dense Answer → GDPO → length/entropy) is a side branch only.
+After that: **Web zero-shot adapter, no train, no new policy actions.** Formal-v2 (dense Answer → GDPO / DAPO) and Efficient-Agent-v2 (OTC-style minimal-search) stay optional and off the main line. Do not block Web on “learn when not to search”.
+
+**Gate 7.5 light audit — DONE 2026-08-20.** `AUDIT_SEARCH_GAIN`. Artifact: `results/50_audit_search_gain/audit_summary.json`. CPU join, no new eval.
+
+Official read is **frozen-dev@200** (n=200, ΔF1 **+0.0645** matches @400 vs SFT):
+
+| Stratum | n | share | SFT F1 | @400 F1 | ΔF1 | Δ Evidence | F1 contrib |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| SFT already search | 142 | 0.710 | 0.6871 | 0.7460 | **+0.0589** | +0.0511 | **+0.0418 (65%)** |
+| SFT internal → @400 search | 57 | 0.285 | 0.6193 | 0.6985 | +0.0792 | +0.7636 | +0.0226 (35%) |
+| still internal | 1 | — | — | — | — | — | — |
+
+Read: **+6.45pp is not only always-search.** Most official Answer-F1 points come from items SFT already searched (+5.9pp on that 71%). The big Evidence jump (+25pp overall) is mostly the 57 flip items (Evidence 0 → 0.76; SFT internal has no `<evidence>`). formal-dev@1000 agrees on already-search ΔF1 **+0.0500**, but that split has more SFT-internal (37%) so flip looks larger — do not replace official Δ_RL with 0.1289.
+
+@400 vs @200: 24 / 17 / 159 tie on val@200; 71 / 62 / 867 on 1000. Same policy family; @400 is a small Answer-F1 edge, not a rewrite.
+
+@600 length: gen 289→619; **77% verbose_single_search**, 7% second-search, 0% duplicate query. Degeneration is rambling, not extra hops.
+
+Next: held-out test once (Direct / Fixed-RAG / SFT / GRPO@400). Do not train.
 
 ---
 
 ## How we prove GRPO helped
 
-Main claim is **Δ_RL = Metric_GRPO − Metric_SFT**, not GRPO vs Base.
+Interview story is the four-arm ladder: **Direct → Fixed RAG → SFT Agent → GRPO@400**.
+Main numeric claim is still **Δ_RL = Metric_GRPO − Metric_SFT** on the same backend. The audit shows this is **not** only always-search: 65% of official +6.45pp F1 is on SFT-already-search items. Do not lead with GRPO vs Base.
 
 | Model | Answer F1 | EM | Evidence F1 | Finish | Search/Tool |
 |---|---:|---:|---:|---:|---:|
@@ -678,7 +801,8 @@ Do not retry 30B. Do not pick 14B or Qwen3.5-9B as the primary line.
 ```text
 Qwen3-8B weights: READY (Dee/model)
 algorithm / data / reward / AgentLoop / Candidate-BM25 / Exact VeXact: FROZEN
-Web: PAUSED
+Best Controlled Policy: GRPO step400
+Web: PAUSED until held-out test
 30B project tree: DELETE (not a runtime source)
 ```
 
@@ -691,7 +815,7 @@ Gate 4 Exact VeXact 1-step     PASS
 Step A SGLang μ/π audit        PASS   (search=0.375, ESS=0.999)
 Step B SGLang + Token-TIS 1-step   PASS
 Gate 5 SGLang+TIS 20-step      PASS
-Formal 200→800                 after frozen-dev@200 + 5K
+Formal 200→600 (no 800)        DONE; Best Controlled Policy = step400
 ```
 
 ---
