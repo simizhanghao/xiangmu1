@@ -1,0 +1,14 @@
+{
+  "gate": "HELDOUT_FOUR_ARM_COMPLETE",
+  "selection_changed": false,
+  "best_controlled_policy": "GRPO step400",
+  "same_split_n": 500,
+  "arms": {
+    "base_direct": {"answer_f1": 0.2210, "em": 0.1480, "search": 0.0, "finish": 0.9880},
+    "fixed_rag": {"answer_f1": 0.3944, "em": 0.2500, "search": 1.0, "finish": 0.9980},
+    "sft_agent": {"answer_f1": 0.6064, "em": 0.5320, "evidence_f1": 0.4652, "search": 0.7180, "finish": 0.9980},
+    "grpo_step400": {"answer_f1": 0.7506, "em": 0.6700, "evidence_f1": 0.7243, "search": 1.1080, "finish": 1.0}
+  },
+  "delta_rl_heldout": {"answer_f1": 0.1442, "em": 0.1380, "evidence_f1": 0.2591},
+  "conclusion": "Controlled Agent stage closed. Proceed to Web zero-shot without retraining."
+}

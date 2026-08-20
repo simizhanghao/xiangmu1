@@ -41,6 +41,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-samples", type=int, default=8)
     p.add_argument("--top-k", type=int, default=5)
     p.add_argument("--max-search-turns", type=int, default=2)
+    p.add_argument("--memory-mode", choices=("none", "research"), default="none")
+    p.add_argument("--memory-evidence-limit", type=int, default=8)
+    p.add_argument("--memory-char-budget", type=int, default=5000)
     p.add_argument("--max-new-tokens", type=int, default=512)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--run-tag", type=str, default="phase3a")
@@ -56,6 +59,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--vllm-model-name", type=str, default="sft8b")
     p.add_argument("--gpu-memory-utilization", type=float, default=0.6)
     p.add_argument("--max-model-len", type=int, default=8192)
+    p.add_argument("--retriever-scope", choices=("candidate", "web"), default="candidate")
+    p.add_argument("--web-provider", choices=("duckduckgo", "brave", "searxng"), default="duckduckgo")
+    p.add_argument("--web-timeout", type=float, default=45.0)
+    p.add_argument("--web-retries", type=int, default=3)
     return p.parse_args()
 
 
@@ -102,6 +109,22 @@ def aggregate(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "p_search_2": round(sum(1 for c in counts if c == 2) / n, 4),
         "p_search_ge3": round(sum(1 for c in counts if c >= 3) / n, 4),
     }
+    memory_rows = [r["research_memory"] for r in rows if r.get("research_memory")]
+    memory_summary = {}
+    if memory_rows:
+        memory_summary = {
+            "mean_memory_evidence_items": round(
+                sum(float(x.get("evidence_items") or 0) for x in memory_rows) / len(memory_rows), 4
+            ),
+            "mean_duplicate_url_count": round(
+                sum(float(x.get("duplicate_url_count") or 0) for x in memory_rows) / len(memory_rows), 4
+            ),
+            "mean_new_evidence_per_search": round(
+                sum(float(x.get("new_evidence_per_search") or 0) for x in memory_rows)
+                / len(memory_rows),
+                4,
+            ),
+        }
     return {
         "num_samples": len(rows),
         "finish_rate": round(n_fin / n, 4),
@@ -114,6 +137,12 @@ def aggregate(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "mean_joint_em": round(mean("joint_em"), 4),
         "mean_search_count": round(mean("search_count"), 4),
         "mean_duplicate_query_count": round(mean("duplicate_query_count"), 4),
+        "mean_retrieval_error_count": round(mean("retrieval_error_count"), 4),
+        "empty_retrieval_rate": round(
+            sum(float(r["metrics"].get("empty_retrieval_count") or 0) for r in rows)
+            / max(1.0, sum(float(r["metrics"].get("search_count") or 0) for r in rows)),
+            4,
+        ),
         "internal_rate": round(n_internal / n, 4),
         "search_rate": round(n_search / n, 4),
         "max_search_turn_hit_rate": round(n_hit_cap / n, 4),
@@ -132,6 +161,7 @@ def aggregate(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
             1,
         ),
         **hist,
+        **memory_summary,
     }
 
 
@@ -193,7 +223,22 @@ def main() -> None:
         max_search_turns=args.max_search_turns,
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
+        memory_mode=args.memory_mode,
+        memory_evidence_limit=args.memory_evidence_limit,
+        memory_char_budget=args.memory_char_budget,
     )
+    retrieve_fn = None
+    if args.retriever_scope == "web":
+        from src.tools.web_adapter import WebAdapter
+
+        web = WebAdapter(
+            provider=args.web_provider,
+            cache_dir=run_dir / "web_cache",
+            timeout_s=args.web_timeout,
+            retries=args.web_retries,
+        )
+        retrieve_fn = web.retrieve
+        print(f"[phase3a] live_web provider={args.web_provider}", flush=True)
 
     rows_out: List[Dict[str, Any]] = []
     t_all = time.time()
@@ -202,7 +247,13 @@ def main() -> None:
     ).open("w", encoding="utf-8") as mf:
         for i, sample in enumerate(samples, 1):
             result = run_search_agent_rollout(
-                sample, model, tokenizer, cfg, generate_fn=generate_fn
+                sample,
+                model,
+                tokenizer,
+                cfg,
+                generate_fn=generate_fn,
+                retrieve_fn=retrieve_fn,
+                retriever_scope=args.retriever_scope,
             )
             tr = result.trace.to_jsonl_dict()
             tf.write(json.dumps(tr, ensure_ascii=False) + "\n")
@@ -227,6 +278,7 @@ def main() -> None:
                     for s in result.trace.steps
                 ],
                 "raw_generations": result.raw_generations,
+                "research_memory": (result.trace.metadata or {}).get("research_memory"),
             }
             mf.write(json.dumps(row, ensure_ascii=False) + "\n")
             mf.flush()
@@ -253,6 +305,11 @@ def main() -> None:
             "max_search_turns": args.max_search_turns,
             "elapsed_seconds": round(time.time() - t_all, 2),
             "run_dir": str(run_dir),
+            "retriever_scope": args.retriever_scope,
+            "web_provider": args.web_provider if args.retriever_scope == "web" else None,
+            "web_timeout": args.web_timeout if args.retriever_scope == "web" else None,
+            "web_retries": args.web_retries if args.retriever_scope == "web" else None,
+            "memory_mode": args.memory_mode,
             "gates_hint": {
                 "finish_rate_target": ">=0.8",
                 "observation_mask_ok_target": 1.0,

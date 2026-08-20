@@ -83,7 +83,7 @@ case "${GRPO_FSDP_OFFLOAD:-0}" in
   *) fsdp_offload=False ;;
 esac
 
-echo "GRPO mode=$mode current=$current target=$target_step batch=$batch n=$n micro=$micro fsdp_offload=$fsdp_offload"
+echo "GRPO mode=$mode current=$current target=$target_step batch=$batch n=$n micro=$micro fsdp_offload=$fsdp_offload T=${GRPO_TEMPERATURE:-0.7} top_p=${GRPO_TOP_P:-0.95}"
 echo "log=$log"
 echo "tensorboard_dir=$tensorboard_dir"
 
@@ -136,8 +136,8 @@ env -u LD_LIBRARY_PATH CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES" \
   actor_rollout_ref.rollout.mode=async \
   actor_rollout_ref.rollout.seed=42 \
   actor_rollout_ref.rollout.n="$n" \
-  actor_rollout_ref.rollout.temperature=0.9 \
-  actor_rollout_ref.rollout.top_p=0.95 \
+  actor_rollout_ref.rollout.temperature="${GRPO_TEMPERATURE:-0.7}" \
+  actor_rollout_ref.rollout.top_p="${GRPO_TOP_P:-0.95}" \
   actor_rollout_ref.rollout.top_k=-1 \
   actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
   actor_rollout_ref.rollout.pipeline_model_parallel_size="${GRPO_PP_SIZE:-4}" \

@@ -53,6 +53,9 @@ class RolloutConfig:
     temperature: float = 0.0
     top_p: float = 1.0
     system_prompt: str = AGENT_SYSTEM_PROMPT
+    memory_mode: str = "none"  # none | research
+    memory_evidence_limit: int = 8
+    memory_char_budget: int = 5000
 
 
 @dataclass
@@ -235,6 +238,7 @@ def _append_policy_steps(
 
 
 GenerateFn = Callable[..., Tuple[str, int, int]]
+RetrieveFn = Callable[[Dict[str, Any], str, int], Dict[str, Any]]
 
 
 def _truncate_at_stop(text: str) -> str:
@@ -383,8 +387,13 @@ def run_search_agent_rollout(
     config: Optional[RolloutConfig] = None,
     generate_fn: Optional[GenerateFn] = None,
     generation_seed: Optional[int] = None,
+    prefix_search_queries: Optional[Sequence[str]] = None,
+    finalize_after_prefix: bool = False,
+    retrieve_fn: Optional[RetrieveFn] = None,
+    retriever_scope: str = "candidate",
 ) -> RolloutResult:
     cfg = config or RolloutConfig()
+    retrieve = retrieve_fn or retrieve_candidate_bm25
     if generate_fn is None and model is None:
         raise ValueError("run_search_agent_rollout needs model or generate_fn")
     t0 = time.perf_counter()
@@ -395,6 +404,18 @@ def run_search_agent_rollout(
         {"role": "system", "content": cfg.system_prompt},
         {"role": "user", "content": f"Question: {question}"},
     ]
+    research_memory = None
+    if cfg.memory_mode == "research":
+        from src.agents.research_memory import ResearchMemory
+
+        research_memory = ResearchMemory(
+            question=question,
+            max_searches=cfg.max_search_turns,
+            evidence_limit=cfg.memory_evidence_limit,
+            char_budget=cfg.memory_char_budget,
+        )
+    elif cfg.memory_mode != "none":
+        raise ValueError(f"unsupported memory_mode: {cfg.memory_mode}")
 
     steps: List[TraceStep] = []
     all_docs: List[Any] = []
@@ -404,6 +425,8 @@ def run_search_agent_rollout(
     prompt_tokens = 0
     generated_tokens = 0
     observation_tokens = 0
+    retrieval_error_count = 0
+    empty_retrieval_count = 0
     search_turns = 0
     finished = False
     route_first = "none"
@@ -437,6 +460,61 @@ def run_search_agent_rollout(
                 metadata={"truncated_evidence": True},
             )
         )
+
+    def _run_one_search(query: str, assistant_chunk: str) -> None:
+        nonlocal search_turns, observation_tokens, finalize_only, phase
+        nonlocal retrieval_error_count, empty_retrieval_count
+        search_queries.append(query)
+        search_turns += 1
+        packed = retrieve(sample, query, cfg.top_k)
+        docs = list(packed.get("documents") or [])
+        retrieval_error_count += len(packed.get("errors") or [])
+        empty_retrieval_count += int(not docs)
+        for d in docs_to_schema(docs):
+            if d.document_id not in seen_doc_ids:
+                seen_doc_ids.add(d.document_id)
+                all_docs.append(d)
+        obs_body = format_observation_text(docs)
+        if research_memory is not None:
+            research_memory.add_search(query, docs)
+            for message in messages:
+                if message.get("role") == "observation":
+                    message["content"] = "[Earlier raw observation compressed into Research Memory.]"
+            obs_body = f"{obs_body}\n\n{research_memory.render()}"
+        observation_tokens += len(tokenizer.encode(obs_body, add_special_tokens=False))
+        steps.append(
+            TraceStep(
+                step_id=len(steps),
+                step_type="observation",
+                content=obs_body,
+                loss_mask=False,
+                document_ids=[str(d["document_id"]) for d in docs],
+                metadata={
+                    "query": query,
+                    "retriever": packed.get("retriever"),
+                    "search_turn": search_turns,
+                    "prefix_replay": True,
+                    "retrieval_errors": packed.get("errors") or [],
+                },
+            )
+        )
+        messages.append({"role": "assistant", "content": assistant_chunk})
+        messages.append({"role": "observation", "content": obs_body})
+        if search_turns >= cfg.max_search_turns:
+            finalize_only = True
+            phase = "evidence"
+
+    for q in list(prefix_search_queries or []):
+        q = str(q or "").strip()
+        if not q:
+            continue
+        chunk = f"<search>{q}</search>"
+        raw_gens.append(chunk)
+        _append_policy_steps(steps, chunk)
+        _run_one_search(q, chunk)
+    if finalize_after_prefix and search_turns > 0:
+        finalize_only = True
+        phase = "evidence"
 
     for _round in range(cfg.max_rounds):
         chunk, ptok, gtok = _generate_until_action(
@@ -546,14 +624,22 @@ def run_search_agent_rollout(
         search_queries.append(query)
         search_turns += 1
 
-        packed = retrieve_candidate_bm25(sample, query, top_k=cfg.top_k)
+        packed = retrieve(sample, query, cfg.top_k)
         docs = list(packed.get("documents") or [])
+        retrieval_error_count += len(packed.get("errors") or [])
+        empty_retrieval_count += int(not docs)
         for d in docs_to_schema(docs):
             if d.document_id not in seen_doc_ids:
                 seen_doc_ids.add(d.document_id)
                 all_docs.append(d)
 
         obs_body = format_observation_text(docs)
+        if research_memory is not None:
+            research_memory.add_search(query, docs)
+            for message in messages:
+                if message.get("role") == "observation":
+                    message["content"] = "[Earlier raw observation compressed into Research Memory.]"
+            obs_body = f"{obs_body}\n\n{research_memory.render()}"
         observation_tokens += len(tokenizer.encode(obs_body, add_special_tokens=False))
 
         steps.append(
@@ -567,6 +653,7 @@ def run_search_agent_rollout(
                     "query": query,
                     "retriever": packed.get("retriever"),
                     "search_turn": search_turns,
+                    "retrieval_errors": packed.get("errors") or [],
                 },
             )
         )
@@ -644,7 +731,11 @@ def run_search_agent_rollout(
             "hit_max_search_turns": hit_max_search,
             "max_search_turns": cfg.max_search_turns,
             "top_k": cfg.top_k,
-            "retriever_scope": "candidate",
+            "retriever_scope": retriever_scope,
+            "memory_mode": cfg.memory_mode,
+            "research_memory": research_memory.summary() if research_memory is not None else None,
+            "retrieval_error_count": retrieval_error_count,
+            "empty_retrieval_count": empty_retrieval_count,
             "evidence": evid_meta,
         },
     )
@@ -667,6 +758,8 @@ def run_search_agent_rollout(
         "finished": float(finished),
         "search_count": float(cost.search_count),
         "duplicate_query_count": float(cost.duplicate_query_count),
+        "retrieval_error_count": float(retrieval_error_count),
+        "empty_retrieval_count": float(empty_retrieval_count),
         "format_valid": float(len([e for e in errors if "rollout_unfinished" not in e]) == 0),
         "evidence_f1": ev_f1,
         "evidence_precision": ev_p,

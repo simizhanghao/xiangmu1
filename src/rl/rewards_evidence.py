@@ -149,6 +149,7 @@ def compute_score(
         "score": br.total,
         "total_reward": br.total,
         "em": em,
+        "answer_em": em,
         "answer_reward": br.answer_reward,
         "format": fmt,
         "format_reward": br.format_reward,

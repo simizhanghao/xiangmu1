@@ -1,0 +1,27 @@
+{
+  "gate": "L3_PARTIAL_PASS",
+  "policy": "GRPO step400",
+  "heldout_samples": 500,
+  "search2_samples": 54,
+  "search2_rate": 0.108,
+  "mean_delta_f1_search2": 0.354,
+  "search2_helps": 22,
+  "search2_helps_rate": 0.4074,
+  "search2_hurts": 2,
+  "search2_hurts_rate": 0.037,
+  "strict_adaptive_new_document_hops": 18,
+  "strict_adaptive_new_document_rate": 0.3333,
+  "strict_adaptive_new_supporting_fact_hops": 7,
+  "strict_adaptive_new_supporting_fact_rate": 0.1296,
+  "obs_conditioned_hop_mean_delta_f1": 0.5619,
+  "duplicate_retries": 25,
+  "duplicate_retry_rate": 0.463,
+  "claim": "Partial observation-conditioned adaptive second-hop retrieval with causal answer gains; duplicate retry remains substantial.",
+  "boundaries": [
+    "Do not claim mature fully adaptive DeepResearch.",
+    "Do not retrain or reopen Formal-v1.",
+    "Proceed to held-out four-arm closure, then Web zero-shot."
+  ],
+  "source_summary": "results/52_multiturn_capability/n54_counterfactual/summary.json",
+  "source_rows": "results/52_multiturn_capability/n54_counterfactual/rows.jsonl"
+}

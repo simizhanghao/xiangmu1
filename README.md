@@ -2,7 +2,36 @@
 
 冻结总计划（唯一执行线）：[PLAN.md](PLAN.md)。
 
-**当前进度（2026-08-20）：** **Best Controlled Policy = GRPO step400**。held-out 是 regression set。finalize-v2b 后 GRPO@400@500：F1 **0.7506** / EM **0.670** / Evidence **0.7243** / finish **1.0** / 二搜未完成 **0/54**。`p_search_2` 仍 10.8%。下一步：MULTITURN_CAPABILITY_AUDIT。先不跑四臂 / Web。不重训。
+**当前进度（2026-08-20）：** Controlled Agent **CLOSED**。同一 held-out 500 上 GRPO@400 vs SFT：Answer F1 **0.7506 vs 0.6064（ΔRL +0.1442）**，EM +0.138，Evidence F1 +0.2591；L3 adaptive second-hop `PARTIAL PASS`。**现在进入 Web zero-shot tool adapter；禁止重训、改 action 或重开 Formal-v1。**
+
+Web-v1 已冻结为同一 `<search> → <tool_response>` 协议，并提供 `none/research`
+成对消融。ResearchMemory 只使用本轮 Web 返回内容，保存带 URL 的 Evidence、搜索历史、
+去重状态和剩余预算；旧网页正文会压缩，搜索上限 5 仅是安全 cap。当前真实运行唯一外部
+门槛是可用的 Brave key 或 SearXNG endpoint。
+
+Web No-Memory smoke n=8 已完成（2026-08-20）：finish 1.0 / Answer F1 0.2292 /
+EM 0.125 / search 全部为 1 次，但公网抓取仍有 5.75 个 page error/episode、205s/item。
+ResearchMemory 配对臂运行中；该 n=8 结果只判协议与网络，不作为 L4 最终效果。
+
+能力边界：
+
+```text
+L1 Tool execution               PASS
+L2 Evidence-grounded answering  PASS
+L3 Adaptive second-hop          PARTIAL PASS
+L4 Real-Web research            NOT RUN
+```
+
+Held-out 500 closure:
+
+| Arm | Answer F1 | EM | Evidence F1 | Search | Finish |
+|---|---:|---:|---:|---:|---:|
+| Base Direct | 0.2210 | 0.1480 | — | 0.000 | 0.988 |
+| Fixed RAG | 0.3944 | 0.2500 | — | 1.000 | 0.998 |
+| SFT Agent | 0.6064 | 0.5320 | 0.4652 | 0.718 | 0.998 |
+| **GRPO@400** | **0.7506** | **0.6700** | **0.7243** | 1.108 | **1.000** |
+
+同后端、同 corrected Harness：`ΔRL,heldout F1 = +0.1442`。Controlled 到此关闭。
 
 ## 项目目标
 

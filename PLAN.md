@@ -549,7 +549,33 @@ Main claim for v1: Agentic GRPO improved **autonomous retrieval-grounded answeri
 
 ## Gate 7 — Best Controlled Policy freeze + light audit + held-out test
 
-**NOW = MULTITURN_CAPABILITY_AUDIT on all search=2 (n=54).** Evaluator is fair. Do not train. Do not start Direct/RAG/SFT/Web yet.
+**CONTROLLED CLOSED 2026-08-20. NOW = Web zero-shot adapter. No more Controlled training.**
+Held-out four-arm closure on the same corrected 500 is complete: Direct F1 0.2210, Fixed-RAG 0.3944, SFT 0.6064, GRPO@400 **0.7506**. Same-backend ΔRL held-out = **+0.1442 F1 / +0.138 EM / +0.2591 Evidence F1**. Selection is unchanged.
+
+**DONE 2026-08-20 L3 counterfactual n=54 — `L3_PARTIAL_PASS`:**
+mean ΔF1 **+0.354**; helps **22/54 (40.7%)**, hurts **2/54 (3.7%)**.
+Strict query rewrite + Obs1-conditioned + new document + ΔF1>0 = **18/54 (33.3%)**.
+Obs-conditioned hop mean ΔF1 = **+0.562**. New gold supporting fact + ΔF1>0 = **7/54 (13.0%)**.
+Duplicate retry remains **25/54 (46.3%)**. This proves partial causal second-hop ability, not mature fully adaptive DeepResearch.
+
+**DONE 2026-08-20 L3 offline n=54:**
+exact dup **25/54 = 46.3%** (all labeled `duplicate_retry`, no new docs).
+rewrite **29/54 = 53.7%** → `obs_conditioned_hop` **28**, `rewrite_not_obs_conditioned` **1**.
+new_doc 53.7% / new supporting-fact **16.7%** / two-search F1 **0.6043** (harder slice than overall 0.7506).
+Heuristic only. Do **not** announce adaptive multi-hop until ΔF1.
+
+**Capability ladder (locked):**
+| Level | Meaning | Status |
+| L1 | Calls search | DONE |
+| L2 | Uses obs/evidence to answer | DONE (main GRPO gain) |
+| L3 | After Obs1: stop or write a useful Query2 | **PARTIAL PASS** |
+| L4 | Real Web, adaptive depth, stop when enough | **NOT RUN** |
+
+Multi-turn means the policy chooses depth under a budget, not “must search twice.”
+
+**After this audit (locked fork):**
+- Real hops (rewrite + obs-conditioned + new evidence + ΔF1>0) → Web zero-shot, raise budget as safety only.
+- Mostly duplicate retry → Controlled stays closed; optional MultiTurn-v2 later (plan SFT + IGPO-style turn credit). Do not reopen Formal-v1 / GDPO / DAPO / search-cost.
 
 **DONE 2026-08-20 finalize-v2b held-out 500:** `HELDOUT_GRPO400_DONE`.
 `results/51_heldout_test/n500_grpo400_finalize_v2b/.../summary.json`. 1802s.
@@ -586,15 +612,55 @@ finalize-v2b split budgets    DONE on the 11 unfinished IDs
         ↓
 rerun @400 same 500           DONE (finish 1.0, search2 unf 0/54, F1 0.7506)
         ↓
-MULTITURN_CAPABILITY_AUDIT     ← this step
+MULTITURN_CAPABILITY_AUDIT L3  DONE → PARTIAL PASS
+  1 novelty  2 obs1 dependence  3 new evidence  4 forced-1-search ΔF1
         ↓
-MULTITURN_CAPABILITY_AUDIT (all search=2)
-  novelty / obs1-dependence / new evidence / forced-1-search ΔF1
+fork: Web zero-shot   or   optional MultiTurn-v2
         ↓
-held-out four arms: Direct / RAG / SFT / GRPO@400
+held-out four arms             ← this step
         ↓
-Controlled close → Web zero-shot (or MultiTurn/Web-v2 if mostly duplicate)
+L4 Real-Web adaptive depth (budget is a cap, not a quota)
 ```
+
+### Gate 9 — Real-Web Zero-Shot + bounded ResearchMemory
+
+**ACTIVE 2026-08-20. Policy remains GRPO@400; no training and no new action tags.**
+
+Execution order is frozen:
+
+```text
+provider smoke
+  → Web adapter raw zero-shot smoke (`memory_mode=none`)
+  → Web Harness v1.1 (`memory_mode=research`, max_search_turns=5 as cap)
+  → paired No-Memory vs Research-Memory evaluation
+  → L4 decision
+```
+
+Web-v1 memory is episode-local and tool-derived only:
+
+- raw observation buffer: temporary; older page text is compacted;
+- evidence memory: bounded snippets with evidence ID, title and canonical URL;
+- search memory: previous queries, visited URLs, novelty and remaining budget;
+- research state: Known evidence / Missing information / Previous searches / Remaining budget.
+
+Never read gold answers, supporting facts or qrels into memory. Do not add a vector DB,
+long-term user memory, knowledge graph or multi-agent shared memory. Search budget 5 is a
+safety ceiling, not a quota.
+
+Primary paired metrics: duplicate query, duplicate URL, new evidence/search,
+observation-conditioned Query2/3, prompt tokens, finish, Answer F1 and evidence quality.
+ResearchMemory succeeds only if redundancy/prompt growth fall while Answer and finish do
+not regress materially. If zero-shot already shows variable depth, evidence gain and active
+stopping, stop optimization. Only persistent repeat/non-planning may open the optional
+1–2K MultiTurn-v2 branch.
+
+**IN PROGRESS 2026-08-20 Web smoke n=8:** No-Memory arm completed on frozen-dev's
+first 8 IDs: finish/parse/observation-mask **1.0**, Answer F1 **0.2292**, EM **0.125**,
+Evidence F1 **0.10**, search exactly **1.0** on every item, latency **205.0s/item**.
+Each episode still had **5.75 page-fetch errors** on average, although empty retrieval was
+0. This is an infrastructure-qualified smoke, not an L4 score and not comparable to the
+held-out-500 Controlled table. ResearchMemory paired arm is still running; no paired
+decision until it completes.
 
 **DONE 2026-08-20 held-out GRPO@400 n=500:** `HELDOUT_GRPO400_DONE`.
 `results/51_heldout_test/n500_grpo400/.../summary.json`. 1789s.
@@ -758,14 +824,21 @@ Same policy. Tool backend changes from Candidate-BM25 to Live Web.
 
 ```text
 User Question → frozen GRPO policy
-  → SEARCH → result list
-  → OPEN → clean / chunk
-  → FIND → Evidence Workspace
+  → <search>query</search>
+  → tool-internal Web search → fetch → clean/chunk → rank/dedupe/truncate
+  → <tool_response>evidence chunks + URLs</tool_response>
   → reason + cite → answer
 ```
 
-First Web version has **three actions only**: SEARCH / OPEN / FIND.
-No multi-agent browser/planner/writer/critic stack.
+First Web version keeps the **single existing policy action** `<search>`. OPEN/FIND are
+tool-internal operations, not new model actions. No retraining and no multi-agent
+browser/planner/writer/critic stack.
+
+**Web adapter status 2026-08-20:** implementation + offline fixture PASS. Supports
+DuckDuckGo HTML, Brave API, and SearXNG; includes public-URL checks, timeout,
+bounded fetch, visible-text extraction, relevant-chunk ranking, dedupe, and cache.
+Host TLS to DuckDuckGo is reset, so live smoke awaits `BRAVE_SEARCH_API_KEY` or
+`SEARXNG_URL`; this is the current external-provider gate, not a policy blocker.
 
 Harness additions (not new algorithms): Evidence Workspace, context budget, cache/retry/timeout, Streamlit trace viewer.
 
@@ -802,7 +875,7 @@ Do not retry 30B. Do not pick 14B or Qwen3.5-9B as the primary line.
 Qwen3-8B weights: READY (Dee/model)
 algorithm / data / reward / AgentLoop / Candidate-BM25 / Exact VeXact: FROZEN
 Best Controlled Policy: GRPO step400
-Web: PAUSED until held-out test
+Web: ACTIVE — zero-shot adapter, same frozen GRPO@400 policy, no new actions
 30B project tree: DELETE (not a runtime source)
 ```
 
