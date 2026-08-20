@@ -38,11 +38,14 @@ def main() -> None:
     p.add_argument("--allow-incomplete", action="store_true")
     a = p.parse_args()
     rows = load(a.run_dir / "trajectories.jsonl")
-    share = load(a.run_dir / "sharegpt.jsonl")
+    decision_path = a.run_dir / "decision_sft.jsonl"
+    share = load(decision_path if decision_path.exists() else a.run_dir / "sharegpt.jsonl")
     parity = 0
     extra = duplicate = obs_conditioned = new_source = new_evidence = 0
     empty = leaks = invalid_evidence_refs = 0
     depth: dict[int, int] = {}
+    d1_stop_correct = d2_forced1_insufficient = d2_positive_delta = 0
+    d1_total = d2_total = causal_records = 0
     for row in rows:
         memory = ResearchMemory(row["question"], max_searches=row["target_depth"], evidence_limit=8, char_budget=4500)
         queries: list[str] = []
@@ -53,8 +56,12 @@ def main() -> None:
             if queries:
                 extra += 1
                 duplicate += int(qnorm(query) in {qnorm(x) for x in queries})
-                novel = words(query) - words(row["question"])
-                obs_conditioned += int(bool(novel & words(prior_obs)))
+                conditioning = str(turn.get("query_conditioning") or "")
+                if conditioning:
+                    obs_conditioned += int(conditioning in {"observation_entity", "missing_state_refinement"})
+                else:
+                    novel = words(query) - words(row["question"])
+                    obs_conditioned += int(bool(novel & words(prior_obs)))
                 new_source += int(int(turn["new_urls"]) > 0)
                 new_evidence += int(int(turn["new_evidence"]) > 0)
             queries.append(query)
@@ -74,6 +81,29 @@ def main() -> None:
         cited_doc_ids = set(re.findall(r"\[document_id=([^|\]]+)", row["actions"][-1]))
         invalid_evidence_refs += len({x.strip() for x in cited_doc_ids} - available_doc_ids)
         depth[row["actual_depth"]] = depth.get(row["actual_depth"], 0) + 1
+        causal = row.get("minimal_depth_audit") or {}
+        if causal:
+            causal_records += 1
+        if row["actual_depth"] == 1:
+            d1_total += 1
+            d1_stop_correct += int(
+                causal.get("minimal_depth") == 1
+                and causal.get("search1_sufficient") is True
+                and causal.get("stop_after_search1_correct") is True
+                and float(causal.get("final_f1") or 0) >= 0.8
+            )
+        elif row["actual_depth"] == 2:
+            d2_total += 1
+            d2_forced1_insufficient += int(
+                causal.get("minimal_depth") == 2
+                and causal.get("search1_sufficient") is False
+                and causal.get("forced1_sufficient") is False
+            )
+            d2_positive_delta += int(
+                causal.get("search2_useful") is True
+                and float(causal.get("delta_grounded_acceptance") or 0) > 0
+                and float(causal.get("final_f1") or 0) >= 0.8
+            )
     forbidden = sum(
         any(k in example for k in ("gold_answers", "supporting_facts", "contexts"))
         for example in share
@@ -93,6 +123,10 @@ def main() -> None:
         "retained_leak_urls": leaks,
         "invalid_evidence_document_refs": invalid_evidence_refs,
         "training_examples_with_oracle_fields": forbidden,
+        "minimal_depth_audit_coverage": causal_records / max(1, len(rows)),
+        "depth1_stop_correct_rate": d1_stop_correct / d1_total if d1_total else None,
+        "depth2_forced1_insufficient_rate": d2_forced1_insufficient / d2_total if d2_total else None,
+        "depth2_positive_delta_rate": d2_positive_delta / d2_total if d2_total else None,
     }
     quality_pass = (
         rows
@@ -100,13 +134,24 @@ def main() -> None:
         and (extra == 0 or metrics["obs_conditioned_extra_query_rate"] > 0.80)
         and (extra == 0 or metrics["new_source_extra_query_rate"] > 0.80)
         and empty == leaks == forbidden == invalid_evidence_refs == 0
+        and metrics["minimal_depth_audit_coverage"] == 1.0
+        and (d1_total == 0 or metrics["depth1_stop_correct_rate"] == 1.0)
+        and (d2_total == 0 or metrics["depth2_forced1_insufficient_rate"] == 1.0)
+        and (d2_total == 0 or metrics["depth2_positive_delta_rate"] == 1.0)
     )
-    complete = summary_file.get("gate") == "W3_PILOT_BUILT"
-    hard_pass = quality_pass and (a.allow_incomplete or complete)
+    quotas = {int(k): int(v) for k, v in (summary_file.get("quotas") or {}).items()}
+    required_depths = {d for d, quota in quotas.items() if quota > 0}
+    represented_depths = {int(d) for d, count in depth.items() if count > 0}
+    representation_pass = required_depths.issubset(represented_depths)
+    metrics["required_depths_represented"] = representation_pass
+    complete = len(rows) >= 100 and d1_total >= 20 and d2_total >= 20
+    hard_pass = quality_pass and representation_pass and (a.allow_incomplete or complete)
     if quality_pass and complete:
         metrics["gate"] = "W3_DATA_GATE_PASS"
-    elif quality_pass and a.allow_incomplete:
+    elif quality_pass and representation_pass and a.allow_incomplete:
         metrics["gate"] = "W3_ACCEPTED_SUBSET_GATE_PASS"
+    elif quality_pass and not representation_pass:
+        metrics["gate"] = "W3_PARTIAL_DEPTH_SUBSET_FAIL"
     else:
         metrics["gate"] = "W3_DATA_GATE_FAIL"
     (a.run_dir / "audit_summary.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")

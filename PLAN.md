@@ -785,9 +785,101 @@ returns sufficient evidence in one request. In this setting, requiring a third s
 creates artificial redundant trajectories—the exact failure mode Web-MultiTurn-v2 is
 supposed to remove. Do not train on four examples and do not force depth3. Revise the
 120-example pilot to genuine minimal sufficient depth1/2; keep depth3 opportunistic, or
-source it later from a genuinely 3-hop Web-native dataset. Run the revised pilot and its
-full W3-B gate before LoRA. Builder default is now 45% depth1 / 55% depth2 / 0 forced
-depth3 (54/66/0 at n=120); explicit depth quotas remain available for a future 3-hop pool.
+source it later from a genuinely 3-hop Web-native dataset. The four smoke examples have
+protocol/format quality, but **minimal-depth causality was not yet measured**, so they are
+not training data. Run the revised pilot and its full W3-B gate before LoRA.
+
+**ACTIVE — W3-A2 Depth-Aware Candidate Mining:** do not randomly ask the strong teacher
+to manufacture a target depth. First run Tool-only Brave LLM Context on 500–1000 unused
+train-pool questions. Builder-only gold labels candidates as likely depth1 when answer
+evidence is visible after Search1, likely depth2 when Search1 exposes only part of the
+support chain and not the answer, otherwise unresolved. Neither Web nor Teacher receives
+gold/supporting facts. Then run the strong teacher only on mined candidates. Builder:
+`scripts/mine_web_depth_candidates.py`; formal trajectory builder consumes its
+`candidate_manifest.jsonl`.
+
+**W3-B Minimal Sufficient Depth contract (frozen before n=120):**
+
+```text
+Depth1: Search1 evidence sufficient + teacher chooses ANSWER + final F1 >= .8.
+Depth2: force ANSWER at the exact post-Search1 state (teacher still blind to gold);
+        forced1 F1 < .8, then Query2 is observation-conditioned, obtains new source/
+        evidence, final F1 >= .8, and delta F1(search2) > 0.
+```
+
+The 54/66 split is a target, never permission to weaken acceptance. Pilot hard gate is
+accepted>=100 with both depths represented (>=20 each), leak/empty/invalid refs=0,
+train/runtime parity=100%. Depth2 quality: duplicate<=5%, observation-conditioned,
+new-source and new-evidence each>=80%. Causal audit coverage and D1 STOP/D2 necessity/
+positive-delta correctness must all be 100% on accepted examples.
+
+**DONE — first causal smoke `W3_PILOT_INCOMPLETE`:** 2/6 accepted, both depth1;
+D1 STOP correctness 2/2, depth2 0/4. This is not a causal subset pass. Root cause is an
+experimental state mismatch: the miner classified the observation produced by full-question
+Search1, while the builder asked the Teacher to invent a different Search1. Therefore the
+mined difficulty label and forced-answer counterfactual referred to different states.
+Fixed contract: Search1 is frozen by the miner and reused byte-for-byte by the builder;
+Teacher decisions begin at the post-Search1 state. Offline synthetic test
+`W3_MINIMAL_DEPTH_CAUSALITY_PASS`. Re-run the small causal smoke before expanding mining.
+
+Implementation detail discovered during v2: reusing only the Query string is insufficient
+for a live provider because the returned context can change or fail between calls. The
+candidate manifest now stores the exact mined Search1 documents, and the builder replays
+that immutable Obs1 without another Web request. v2 was stopped as causally invalid after
+live Search1 produced Web errors; v3 is the first valid same-state smoke.
+
+**DONE — causal smoke v3 `W3_PARTIAL_DEPTH_SUBSET_FAIL`:** accepted 2/6, both D1;
+D1 STOP=100%, D2 accepted=0. D2 rejections were answer mismatch 4,
+non-observation-conditioned Query2 2, and teacher over-depth 2. No
+`forced1_already_correct` occurred: candidate mining is finding Search1-insufficient states,
+but the Teacher is not reliably producing a successful second-hop plan/answer. Next is a
+small D2-only diagnostic with gold-blind Teacher input/output logging; do not expand mining
+until planning versus retrieval/answer failure is separated.
+
+**DONE — D2-only diagnostic:** 1/7 passed with forced1 F1 **0.083→1.000** after
+Search2, proving the causal builder can produce a genuine D2 example. Two paths were
+false-rejected by an overly narrow lexical rule: their Query2 targeted the explicit
+post-Obs1 Missing state but reused an entity already present in the question. Stateful
+conditioning now accepts either a novel entity grounded in Obs1 or a non-duplicate query
+that targets the serialized Missing field. Of four answer mismatches, `3rd` versus
+`the third ...` was ordinal normalization error and one correct Hong Kong answer was too
+verbose for short-answer token F1; Teacher ANSWER is now constrained to the shortest span
+and ordinal aliases are normalized. Two genuinely wrong answers remain valid rejects.
+Re-run the same seven candidates before scaling.
+
+**DONE — deterministic retry2 `W3_PILOT_INCOMPLETE` (0/7):** repeated outcomes changed,
+showing that Teacher temperature 0.2 made the causal labels unstable. More importantly,
+two forced1 answers guessed the gold while simultaneously reporting unresolved Missing
+and no supporting source. For an Evidence-Aware Agent, a lucky parametric guess is not
+Search1 sufficiency. The frozen sufficiency predicate is now conjunctive:
+`answer accepted AND Missing empty AND cited source_ids exist in current memory`.
+Search2 utility is positive change in this grounded acceptance state; raw Answer-F1 delta
+is still reported separately. Teacher construction/evaluation is deterministic
+temperature=0, seed=42. Run one final same-seven validation before any scale-up.
+
+**DONE — deterministic grounded D2 validation `W3_ACCEPTED_SUBSET_GATE_PASS`:** 4/7
+accepted (target 4), producing 12 decision examples. All 4 have forced1 grounded
+acceptance FAIL → final grounded acceptance PASS; D2 forced1-insufficient=100%, positive
+grounded delta=100%, state-conditioned Query2=100%, new source/evidence=100%, duplicate=0,
+memory replay 8/8, leak/empty/invalid refs/oracle fields=0. Two examples have raw Answer-F1
+delta 0 because forced1 guessed the gold while explicitly retaining Missing / lacking
+grounded evidence; their grounded acceptance delta is correctly +1. Remaining rejects:
+answer mismatch 1, teacher over-depth 1, depth mismatch 1. Combined with the earlier D1
+STOP 2/2, both causal classes are now feasible. Next: medium Tool-only mining before the
+n=120 mixed pilot; still no LoRA.
+
+Every accepted trajectory exports both `trajectories.jsonl` for replay/audit and
+`decision_sft.jsonl` for step-level `state → SEARCH/ANSWER` CE. Previous raw observations
+are compressed into the shared ResearchMemory; only the latest Tool observation remains
+raw. Do not train a monolithic long trajectory and let evidence tokens drown the decision
+signal.
+
+After Pilot PASS, scale with the same miner/builder/gates to 1K–1.5K trajectories. Only
+then train one assistant-only, observation-masked LoRA epoch from GRPO@400. Before model
+development, annotate the already-frozen web-dev50 builder-side as minimal depth
+1/2/unresolved and evaluate STOP@D1, CONTINUE@D2, Q2 conditioning/new evidence, finish,
+and Answer-F1 non-regression. Do not open W4/IGPO unless behavior is correct but utility
+remains poor.
 
 ```text
 Gate W1 — paired protocol smoke, same first 8 IDs
