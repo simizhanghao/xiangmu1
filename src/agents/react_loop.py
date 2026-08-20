@@ -427,6 +427,14 @@ def run_search_agent_rollout(
     observation_tokens = 0
     retrieval_error_count = 0
     empty_retrieval_count = 0
+    model_generation_ms = 0.0
+    search_api_ms = 0.0
+    fetch_ms = 0.0
+    extract_ms = 0.0
+    tool_total_ms = 0.0
+    successful_urls = 0
+    failed_urls = 0
+    filtered_urls = 0
     search_turns = 0
     finished = False
     route_first = "none"
@@ -435,6 +443,18 @@ def run_search_agent_rollout(
     finalize_only = False
     phase = "act"  # act | evidence | answer
     answer_reserve_used = False
+
+    def _record_tool_metrics(packed: Dict[str, Any]) -> None:
+        nonlocal search_api_ms, fetch_ms, extract_ms, tool_total_ms
+        nonlocal successful_urls, failed_urls, filtered_urls
+        timing = packed.get("timing") or {}
+        search_api_ms += float(timing.get("search_api_ms") or 0.0)
+        fetch_ms += float(timing.get("fetch_total_ms") or 0.0)
+        extract_ms += float(timing.get("extract_ms") or 0.0)
+        tool_total_ms += float(timing.get("tool_total_ms") or 0.0)
+        successful_urls += int(timing.get("success_urls") or 0)
+        failed_urls += int(timing.get("failed_urls") or 0)
+        filtered_urls += int(timing.get("filtered_urls") or 0)
 
     def _go_answer_reserve(chunk: str) -> bool:
         nonlocal finalize_only, phase, answer_reserve_used
@@ -467,6 +487,7 @@ def run_search_agent_rollout(
         search_queries.append(query)
         search_turns += 1
         packed = retrieve(sample, query, cfg.top_k)
+        _record_tool_metrics(packed)
         docs = list(packed.get("documents") or [])
         retrieval_error_count += len(packed.get("errors") or [])
         empty_retrieval_count += int(not docs)
@@ -495,6 +516,7 @@ def run_search_agent_rollout(
                     "search_turn": search_turns,
                     "prefix_replay": True,
                     "retrieval_errors": packed.get("errors") or [],
+                    "timing": packed.get("timing") or {},
                 },
             )
         )
@@ -517,6 +539,7 @@ def run_search_agent_rollout(
         phase = "evidence"
 
     for _round in range(cfg.max_rounds):
+        generation_started = time.perf_counter()
         chunk, ptok, gtok = _generate_until_action(
             model,
             tokenizer,
@@ -527,6 +550,7 @@ def run_search_agent_rollout(
             top_p=cfg.top_p,
             seed=generation_seed,
         )
+        model_generation_ms += (time.perf_counter() - generation_started) * 1000.0
         raw_gens.append(chunk)
         prompt_tokens += ptok
         generated_tokens += gtok
@@ -625,6 +649,7 @@ def run_search_agent_rollout(
         search_turns += 1
 
         packed = retrieve(sample, query, cfg.top_k)
+        _record_tool_metrics(packed)
         docs = list(packed.get("documents") or [])
         retrieval_error_count += len(packed.get("errors") or [])
         empty_retrieval_count += int(not docs)
@@ -654,6 +679,7 @@ def run_search_agent_rollout(
                     "retriever": packed.get("retriever"),
                     "search_turn": search_turns,
                     "retrieval_errors": packed.get("errors") or [],
+                    "timing": packed.get("timing") or {},
                 },
             )
         )
@@ -736,6 +762,16 @@ def run_search_agent_rollout(
             "research_memory": research_memory.summary() if research_memory is not None else None,
             "retrieval_error_count": retrieval_error_count,
             "empty_retrieval_count": empty_retrieval_count,
+            "timing": {
+                "search_api_ms": round(search_api_ms, 2),
+                "fetch_ms": round(fetch_ms, 2),
+                "extract_ms": round(extract_ms, 2),
+                "tool_total_ms": round(tool_total_ms, 2),
+                "model_generation_ms": round(model_generation_ms, 2),
+                "successful_urls": successful_urls,
+                "failed_urls": failed_urls,
+                "filtered_urls": filtered_urls,
+            },
             "evidence": evid_meta,
         },
     )
@@ -760,6 +796,14 @@ def run_search_agent_rollout(
         "duplicate_query_count": float(cost.duplicate_query_count),
         "retrieval_error_count": float(retrieval_error_count),
         "empty_retrieval_count": float(empty_retrieval_count),
+        "search_api_ms": float(search_api_ms),
+        "fetch_ms": float(fetch_ms),
+        "extract_ms": float(extract_ms),
+        "tool_total_ms": float(tool_total_ms),
+        "model_generation_ms": float(model_generation_ms),
+        "successful_urls": float(successful_urls),
+        "failed_urls": float(failed_urls),
+        "filtered_urls": float(filtered_urls),
         "format_valid": float(len([e for e in errors if "rollout_unfinished" not in e]) == 0),
         "evidence_f1": ev_f1,
         "evidence_precision": ev_p,

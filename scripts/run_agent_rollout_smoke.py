@@ -60,9 +60,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--gpu-memory-utilization", type=float, default=0.6)
     p.add_argument("--max-model-len", type=int, default=8192)
     p.add_argument("--retriever-scope", choices=("candidate", "web"), default="candidate")
-    p.add_argument("--web-provider", choices=("duckduckgo", "brave", "searxng"), default="duckduckgo")
+    p.add_argument(
+        "--web-provider",
+        choices=("duckduckgo", "brave", "brave_llm_context", "searxng"),
+        default="duckduckgo",
+    )
     p.add_argument("--web-timeout", type=float, default=45.0)
     p.add_argument("--web-retries", type=int, default=3)
+    p.add_argument("--web-context-tokens", type=int, default=4096)
     return p.parse_args()
 
 
@@ -143,6 +148,14 @@ def aggregate(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
             / max(1.0, sum(float(r["metrics"].get("search_count") or 0) for r in rows)),
             4,
         ),
+        "mean_search_api_ms": round(mean("search_api_ms"), 2),
+        "mean_fetch_ms": round(mean("fetch_ms"), 2),
+        "mean_extract_ms": round(mean("extract_ms"), 2),
+        "mean_tool_total_ms": round(mean("tool_total_ms"), 2),
+        "mean_model_generation_ms": round(mean("model_generation_ms"), 2),
+        "mean_successful_urls": round(mean("successful_urls"), 4),
+        "mean_failed_urls": round(mean("failed_urls"), 4),
+        "mean_filtered_urls": round(mean("filtered_urls"), 4),
         "internal_rate": round(n_internal / n, 4),
         "search_rate": round(n_search / n, 4),
         "max_search_turn_hit_rate": round(n_hit_cap / n, 4),
@@ -236,6 +249,7 @@ def main() -> None:
             cache_dir=run_dir / "web_cache",
             timeout_s=args.web_timeout,
             retries=args.web_retries,
+            llm_context_tokens=args.web_context_tokens,
         )
         retrieve_fn = web.retrieve
         print(f"[phase3a] live_web provider={args.web_provider}", flush=True)
@@ -309,6 +323,9 @@ def main() -> None:
             "web_provider": args.web_provider if args.retriever_scope == "web" else None,
             "web_timeout": args.web_timeout if args.retriever_scope == "web" else None,
             "web_retries": args.web_retries if args.retriever_scope == "web" else None,
+            "web_context_tokens": (
+                args.web_context_tokens if args.retriever_scope == "web" else None
+            ),
             "memory_mode": args.memory_mode,
             "gates_hint": {
                 "finish_rate_target": ">=0.8",

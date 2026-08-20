@@ -662,6 +662,46 @@ Each episode still had **5.75 page-fetch errors** on average, although empty ret
 held-out-500 Controlled table. ResearchMemory paired arm is still running; no paired
 decision until it completes.
 
+**STOPPED 2026-08-20 — `P0_WEB_INFRA_FAIL`:** ResearchMemory arm was manually stopped
+before completion. Do not interpret it. The No-Memory diagnostic showed 205s/item and
+5.75 failed page fetches/item; therefore Layer 2 (URL→content) is broken enough to confound
+Layer 3 (policy). Freeze model and memory work until Web Tool passes.
+
+Web Infra recovery order:
+
+```text
+v1.1 per-stage profile (search API / per-URL fetch / extract / model / total)
+  → v1.2 Brave LLM Context (pre-extracted snippets, 5 URLs, ~4096 tokens)
+  → tool-only same-query A/B, first n=3 then n=20
+  → require low errors + nonempty/relevant context + practical latency
+  → Agent n=8 protocol smoke
+  → Agent n=30–50 depth/memory evaluation
+```
+
+Do not add proxy first. If Brave API/LLM Context itself is slow or resets, route only the
+Web Tool through a stable proxy/VPS. Never proxy vLLM, local retrieval or training traffic.
+Do not reopen Query planning or MultiTurn-v2 until Web Tool passes.
+
+**DONE 2026-08-20 Web Tool A/B n=3 (leak-filtered):** `WEB_TOOL_N3_PASS`.
+Brave URL+local-fetch: mean/p50/p95 **23.24/16.47/42.12s**, failed URLs **2.67/q**,
+answer-string hit **0/3**, supporting-title recall **0.167**. Brave LLM Context:
+mean/p50/p95 **0.65/0.62/0.76s**, failed URLs **0**, nonempty **3/3**,
+answer-string hit **3/3**, supporting-title recall **0.667**. Two Hugging Face dataset
+mirror URLs were filtered before retrieval. Decision: continue tool-only n=20; do not run
+Agent yet.
+
+**DONE 2026-08-20 Web Tool A/B n=20 (same-query, leak-filtered):**
+`WEB_TOOL_N20_PASS`. Brave Search + local page fetch mean/p50/p95 latency is
+**29.16/26.33/51.09s**, with **3.50 failed URLs/query**, **75%** nonempty context,
+answer-string hit **0.15**, and supporting-title recall **0.20**. Brave LLM Context is
+**0.507/0.471/0.644s**, with **0 errors**, **100%** nonempty context, answer-string hit
+**0.55**, and supporting-title recall **0.60**. Mean latency falls **98.26% (57.5x)**.
+Local fetch consumes **97.4%** of the old Tool latency, while the Brave Search API itself
+is only 0.73s; therefore the causal bottleneck is arbitrary-page fetching, not model or
+search API. Freeze Web-v1 provider to `brave_llm_context`; no proxy is justified now.
+This is a Tool-only fixed-slice diagnostic, not an Agent/L4 score. Next gate: frozen
+GRPO@400 Agent n=8 protocol smoke; only after health passes run n=30–50.
+
 **DONE 2026-08-20 held-out GRPO@400 n=500:** `HELDOUT_GRPO400_DONE`.
 `results/51_heldout_test/n500_grpo400/.../summary.json`. 1789s.
 Answer F1 **0.7493** / EM **0.668** / Evidence **0.7132** / Joint **0.5825** / finish **0.976** / search=1.0 / `p_search_2=0.108` / gen **312.5**.

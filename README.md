@@ -11,7 +11,16 @@ Web-v1 已冻结为同一 `<search> → <tool_response>` 协议，并提供 `non
 
 Web No-Memory smoke n=8 已完成（2026-08-20）：finish 1.0 / Answer F1 0.2292 /
 EM 0.125 / search 全部为 1 次，但公网抓取仍有 5.75 个 page error/episode、205s/item。
-ResearchMemory 配对臂运行中；该 n=8 结果只判协议与网络，不作为 L4 最终效果。
+该 n=8 结果只判协议与网络，不作为 L4 最终效果。
+
+该 ResearchMemory 臂随后被主动停止：当前判定为 `P0_WEB_INFRA_FAIL`，不是 policy
+失败。主线先做逐阶段 latency/error profiling，并以 Brave LLM Context 的预抽取正文
+替代服务器逐页抓取；通过同 query 的 n=3→20 纯 Tool A/B 后，才恢复 Agent 评测。
+
+Leak-filtered Tool A/B n=20 已 PASS：本地抓页均值/p95 29.16/51.09s、3.5 failed
+URLs/q、非空率 75%；Brave LLM Context 均值/p95 0.51/0.64s、零错误、20/20
+非空。均值加速 57.5×，Web-v1 默认后端已冻结为 `brave_llm_context`。这仍是纯
+Tool 结论；下一关是冻结 GRPO@400 的 Agent n=8 protocol smoke。
 
 能力边界：
 

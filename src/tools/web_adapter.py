@@ -14,6 +14,7 @@ import json
 import os
 import re
 import socket
+import time
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
@@ -68,6 +69,29 @@ def _tokens(text: str) -> set[str]:
     return {x for x in re.findall(r"[a-z0-9]{3,}", text.lower())}
 
 
+def _clean_context_snippet(value: Any) -> str:
+    if isinstance(value, str):
+        return re.sub(r"\s+", " ", value).strip()
+    if value is None:
+        return ""
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _is_benchmark_leak_url(url: str) -> bool:
+    """Reject public benchmark mirrors without consulting sample labels or gold data."""
+    parsed = urlparse(str(url or ""))
+    host = (parsed.hostname or "").lower()
+    path = parsed.path.lower()
+    joined = f"{host}{path}"
+    if host in {"huggingface.co", "www.huggingface.co", "datasets-server.huggingface.co"}:
+        return path.startswith("/datasets/") or host.startswith("datasets-server")
+    if host in {"kaggle.com", "www.kaggle.com"} and path.startswith("/datasets/"):
+        return True
+    if host in {"github.com", "www.github.com", "raw.githubusercontent.com"}:
+        return any(marker in path for marker in ("hotpotqa", "hotpot_qa", "hotpot-qa"))
+    return any(marker in joined for marker in ("rag-rl-hotpotqa", "hotpotqa-eval"))
+
+
 class WebAdapter:
     def __init__(
         self,
@@ -78,6 +102,8 @@ class WebAdapter:
         retries: int = 3,
         max_page_bytes: int = 2_000_000,
         chunk_chars: int = 1400,
+        llm_context_tokens: int = 4096,
+        llm_context_threshold: str = "balanced",
     ) -> None:
         self.provider = provider
         self.cache = Path(cache_dir)
@@ -86,6 +112,8 @@ class WebAdapter:
         self.retries = retries
         self.max_page_bytes = max_page_bytes
         self.chunk_chars = chunk_chars
+        self.llm_context_tokens = llm_context_tokens
+        self.llm_context_threshold = llm_context_threshold
         self.session = requests.Session()
         self.session.headers["User-Agent"] = "EvidenceResearchAgent/1.0"
         retry = Retry(
@@ -156,13 +184,68 @@ class WebAdapter:
             out.append({"title": title, "url": target, "snippet": ""})
         return out
 
-    def _fetch_text(self, url: str) -> str:
+    def _brave_llm_context(self, query: str, top_k: int) -> list[dict[str, Any]]:
+        key = os.environ.get("BRAVE_SEARCH_API_KEY", "")
+        if not key:
+            raise RuntimeError("BRAVE_SEARCH_API_KEY is required")
+        api_query = " ".join(str(query).split()[:50])[:400]
+        response = self.session.post(
+            "https://api.search.brave.com/res/v1/llm/context",
+            json={
+                "q": api_query,
+                "country": "US",
+                "search_lang": "en",
+                "count": max(5, top_k),
+                "maximum_number_of_urls": top_k,
+                "maximum_number_of_tokens": self.llm_context_tokens,
+                "maximum_number_of_snippets": max(10, top_k * 4),
+                "maximum_number_of_tokens_per_url": 1024,
+                "maximum_number_of_snippets_per_url": 8,
+                "context_threshold_mode": self.llm_context_threshold,
+                "enable_source_metadata": True,
+            },
+            headers={
+                "X-Subscription-Token": key,
+                "Accept": "application/json",
+                "Accept-Encoding": "gzip",
+                "Content-Type": "application/json",
+            },
+            timeout=self.request_timeout,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        generic = (payload.get("grounding") or {}).get("generic") or []
+        sources = payload.get("sources") or {}
+        out = []
+        for item in generic[:top_k]:
+            url = str(item.get("url") or "")
+            source = sources.get(url) or {}
+            snippets = [_clean_context_snippet(x) for x in (item.get("snippets") or [])]
+            snippets = [x for x in snippets if x]
+            if not snippets:
+                continue
+            out.append(
+                {
+                    "title": str(item.get("title") or source.get("title") or url),
+                    "url": url,
+                    "snippets": snippets,
+                    "source_metadata": source,
+                }
+            )
+        return out
+
+    def _fetch_text(self, url: str) -> tuple[str, dict[str, Any]]:
+        started = time.perf_counter()
         if not _public_http_url(url):
             raise ValueError("URL is not public HTTP(S)")
         key = hashlib.sha256(url.encode()).hexdigest()
         cached = self.cache / f"{key}.json"
         if cached.is_file():
-            return str(json.loads(cached.read_text()).get("text", ""))
+            return str(json.loads(cached.read_text()).get("text", "")), {
+                "fetch_ms": 0.0,
+                "extract_ms": 0.0,
+                "cache_hit": True,
+            }
         current = url
         for _ in range(5):
             response = self.session.get(
@@ -184,37 +267,115 @@ class WebAdapter:
             data.extend(block)
             if len(data) >= self.max_page_bytes:
                 break
+        fetch_ms = (time.perf_counter() - started) * 1000.0
+        extract_started = time.perf_counter()
         parser = _TextExtractor()
         parser.feed(bytes(data).decode(response.encoding or "utf-8", errors="replace"))
         text = parser.text()
         cached.write_text(json.dumps({"url": response.url, "text": text}, ensure_ascii=False))
-        return text
+        return text, {
+            "fetch_ms": round(fetch_ms, 2),
+            "extract_ms": round((time.perf_counter() - extract_started) * 1000.0, 2),
+            "cache_hit": False,
+            "bytes": len(data),
+        }
 
     def retrieve(self, sample: dict[str, Any], query: str, top_k: int = 5) -> dict[str, Any]:
         del sample
-        try:
-            results = self._search(query, max(top_k * 2, top_k))
-        except requests.RequestException as exc:
+        tool_started = time.perf_counter()
+        search_started = time.perf_counter()
+        if self.provider == "brave_llm_context":
+            try:
+                raw_contexts = self._brave_llm_context(query, top_k)
+            except requests.RequestException as exc:
+                search_ms = (time.perf_counter() - search_started) * 1000.0
+                return self._failed_search(query, top_k, exc, search_ms)
+            search_ms = (time.perf_counter() - search_started) * 1000.0
+            contexts = [x for x in raw_contexts if not _is_benchmark_leak_url(x.get("url", ""))]
+            filtered_urls = len(raw_contexts) - len(contexts)
+            qtok = _tokens(query)
+            docs = []
+            for item in contexts:
+                text = "\n\n".join(item["snippets"])[: self.chunk_chars]
+                digest = hashlib.sha256(f"{item['url']}\n{text}".encode()).hexdigest()
+                docs.append(
+                    {
+                        "document_id": f"web_{digest[:12]}",
+                        "title": item["title"],
+                        "text": text,
+                        "rank": len(docs) + 1,
+                        "score": float(len(qtok & _tokens(text))),
+                        "metadata": {
+                            "url": item["url"],
+                            "source": self.provider,
+                            "source_metadata": item["source_metadata"],
+                        },
+                    }
+                )
+            total_ms = (time.perf_counter() - tool_started) * 1000.0
             return {
                 "query": query,
                 "retriever": {
                     "name": self.provider,
                     "scope": "live_web",
                     "top_k": top_k,
-                    "search_ok": False,
+                    "search_ok": True,
                 },
-                "documents": [],
-                "errors": [{"stage": "search", "error": str(exc)[:300]}],
+                "documents": docs,
+                "errors": [],
+                "timing": {
+                    "search_api_ms": round(search_ms, 2),
+                    "fetch_ms": [],
+                    "fetch_total_ms": 0.0,
+                    "extract_ms": 0.0,
+                    "tool_total_ms": round(total_ms, 2),
+                    "success_urls": len(contexts),
+                    "failed_urls": 0,
+                    "filtered_urls": filtered_urls,
+                },
             }
+        try:
+            results = self._search(query, top_k)
+        except requests.RequestException as exc:
+            search_ms = (time.perf_counter() - search_started) * 1000.0
+            return self._failed_search(query, top_k, exc, search_ms)
+        search_ms = (time.perf_counter() - search_started) * 1000.0
+        unfiltered_results = results
+        results = [x for x in unfiltered_results if not _is_benchmark_leak_url(x.get("url", ""))]
+        filtered_urls = len(unfiltered_results) - len(results)
         qtok = _tokens(query)
         candidates: list[tuple[int, str, dict[str, str]]] = []
         errors: list[dict[str, str]] = []
+        fetch_timings: list[dict[str, Any]] = []
+        success_urls = 0
+        extract_ms = 0.0
         for result in results:
+            fetch_started = time.perf_counter()
             try:
-                text = self._fetch_text(result["url"])
+                text, fetch_info = self._fetch_text(result["url"])
             except Exception as exc:  # noqa: BLE001
-                errors.append({"url": result.get("url", ""), "error": str(exc)[:200]})
+                elapsed = (time.perf_counter() - fetch_started) * 1000.0
+                errors.append(
+                    {
+                        "stage": "fetch",
+                        "url": result.get("url", ""),
+                        "error_type": type(exc).__name__,
+                        "elapsed_ms": round(elapsed, 2),
+                        "error": str(exc)[:200],
+                    }
+                )
+                fetch_timings.append(
+                    {
+                        "url": result.get("url", ""),
+                        "ok": False,
+                        "fetch_ms": round(elapsed, 2),
+                        "extract_ms": 0.0,
+                    }
+                )
                 continue
+            success_urls += 1
+            extract_ms += float(fetch_info.get("extract_ms") or 0.0)
+            fetch_timings.append({"url": result.get("url", ""), "ok": True, **fetch_info})
             blocks = [x.strip() for x in re.split(r"\n\s*\n", text) if len(x.strip()) >= 40]
             for block in blocks:
                 score = len(qtok & _tokens(block))
@@ -239,6 +400,7 @@ class WebAdapter:
             )
             if len(docs) >= top_k:
                 break
+        total_ms = (time.perf_counter() - tool_started) * 1000.0
         return {
             "query": query,
             "retriever": {
@@ -249,4 +411,48 @@ class WebAdapter:
             },
             "documents": docs,
             "errors": errors,
+            "timing": {
+                "search_api_ms": round(search_ms, 2),
+                "fetch_ms": fetch_timings,
+                "fetch_total_ms": round(
+                    sum(float(x.get("fetch_ms") or 0.0) for x in fetch_timings), 2
+                ),
+                "extract_ms": round(extract_ms, 2),
+                "tool_total_ms": round(total_ms, 2),
+                "success_urls": success_urls,
+                "failed_urls": len(errors),
+                "filtered_urls": filtered_urls,
+            },
+        }
+
+    def _failed_search(
+        self, query: str, top_k: int, exc: Exception, search_ms: float
+    ) -> dict[str, Any]:
+        return {
+            "query": query,
+            "retriever": {
+                "name": self.provider,
+                "scope": "live_web",
+                "top_k": top_k,
+                "search_ok": False,
+            },
+            "documents": [],
+            "errors": [
+                {
+                    "stage": "search",
+                    "error_type": type(exc).__name__,
+                    "elapsed_ms": round(search_ms, 2),
+                    "error": str(exc)[:300],
+                }
+            ],
+            "timing": {
+                "search_api_ms": round(search_ms, 2),
+                "fetch_ms": [],
+                "fetch_total_ms": 0.0,
+                "extract_ms": 0.0,
+                "tool_total_ms": round(search_ms, 2),
+                "success_urls": 0,
+                "failed_urls": 0,
+                "filtered_urls": 0,
+            },
         }

@@ -1,7 +1,7 @@
 {
-  "status": "PAIR_IN_PROGRESS",
+  "status": "WEB_INFRA_RECOVERED_TOOL_ONLY",
   "date": "2026-08-20",
-  "provider": "brave",
+  "provider": "brave_llm_context",
   "policy": "GRPO@400",
   "eval_slice": "first 8 IDs of data/eval/hotpotqa_200.jsonl",
   "no_memory": {
@@ -20,7 +20,15 @@
     "mean_latency_ms": 204980.2
   },
   "research_memory": {
-    "status": "RUNNING"
+    "status": "STOPPED_BEFORE_COMPLETION"
   },
-  "interpretation": "Infrastructure-qualified smoke only; do not compare this n=8 slice directly with the Controlled held-out-500 table."
+  "tool_gate": {
+    "status": "WEB_TOOL_N20_PASS",
+    "n": 20,
+    "mean_tool_ms": 507.33,
+    "p95_tool_ms": 643.5,
+    "failed_urls_per_query": 0.0,
+    "nonempty_context_rate": 1.0
+  },
+  "interpretation": "The initial Agent result remains infrastructure-confounded. Tool-only A/B identifies local page fetching as the bottleneck and qualifies Brave LLM Context for the next Agent n=8 protocol smoke."
 }

@@ -1,0 +1,27 @@
+{
+  "gate": "WEB_TOOL_N3_PASS",
+  "date": "2026-08-20",
+  "n": 3,
+  "leak_filter_enabled": true,
+  "brave_local_fetch": {
+    "mean_tool_ms": 23235.33,
+    "p50_tool_ms": 16467.03,
+    "p95_tool_ms": 42117.57,
+    "mean_failed_urls": 2.667,
+    "mean_filtered_urls": 0.667,
+    "nonempty_context_rate": 1.0,
+    "gold_answer_string_hit_rate": 0.0,
+    "mean_supporting_title_recall": 0.1667
+  },
+  "brave_llm_context": {
+    "mean_tool_ms": 650.35,
+    "p50_tool_ms": 618.57,
+    "p95_tool_ms": 755.77,
+    "mean_failed_urls": 0.0,
+    "mean_filtered_urls": 0.0,
+    "nonempty_context_rate": 1.0,
+    "gold_answer_string_hit_rate": 1.0,
+    "mean_supporting_title_recall": 0.6667
+  },
+  "decision": "CONTINUE_TOOL_ONLY_N20"
+}

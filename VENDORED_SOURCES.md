@@ -18,6 +18,7 @@
 | `scripts/export_coldstart_sharegpt.py` | 同路径 | ShareGPT export / observation role |
 | `src/tools/candidate_bm25.py` | 同路径 | BM25 排序和 observation 格式 |
 | `scripts/run_agent_rollout_smoke.py` | 同路径 | frozen-dev 入口；`--backend hf\|vllm\|vllm_openai` |
+| `scripts/benchmark_web_tool.py` | 新 | Real-Web 纯 Tool A/B：Brave URL+local fetch vs LLM Context |
 | `scripts/audit_vllm_hf_parity.py` | 同路径 | n=8 vLLM↔HF 协议门 |
 | `scripts/audit_gate35_exploration.py` | 同路径 | Gate 3.5 / 3.5B rollout-only；conditional query / question-copy |
 | `scripts/audit_sft_query_supervision.py` | 同路径 | CPU：4550 `search_format` 是否把 query 教成 question-copy |

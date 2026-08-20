@@ -1,0 +1,41 @@
+{
+  "gate": "WEB_TOOL_N20_PASS",
+  "date": "2026-08-20",
+  "n": 20,
+  "protocol": "same-query fixed frozen-dev slice; tool-only; leak-filtered",
+  "brave_local_fetch": {
+    "mean_tool_ms": 29158.62,
+    "p50_tool_ms": 26328.75,
+    "p95_tool_ms": 51094.97,
+    "mean_search_api_ms": 727.48,
+    "mean_fetch_ms": 28399.04,
+    "mean_failed_urls": 3.5,
+    "mean_filtered_urls": 0.35,
+    "nonempty_context_rate": 0.75,
+    "gold_answer_string_hit_rate": 0.15,
+    "mean_supporting_title_recall": 0.2
+  },
+  "brave_llm_context": {
+    "mean_tool_ms": 507.33,
+    "p50_tool_ms": 470.71,
+    "p95_tool_ms": 643.5,
+    "mean_search_api_ms": 507.0,
+    "mean_failed_urls": 0.0,
+    "nonempty_context_rate": 1.0,
+    "gold_answer_string_hit_rate": 0.55,
+    "mean_supporting_title_recall": 0.6
+  },
+  "effect": {
+    "mean_speedup_x": 57.47,
+    "p50_speedup_x": 55.93,
+    "p95_speedup_x": 79.4,
+    "mean_latency_reduction_pct": 98.26,
+    "local_fetch_share_of_old_tool_latency_pct": 97.4
+  },
+  "decision": "FREEZE_WEB_V1_BACKEND_TO_BRAVE_LLM_CONTEXT_THEN_AGENT_N8",
+  "limitations": [
+    "Tool-only diagnostic; no model generation and no Agent score.",
+    "First fixed 20 examples, so relevance estimates have wide uncertainty.",
+    "Answer-string hit and title recall are diagnostics, not final answer quality."
+  ]
+}
