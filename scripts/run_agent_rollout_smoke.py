@@ -25,6 +25,7 @@ from src.agents.react_loop import (  # noqa: E402
     RolloutConfig,
     make_openai_completions_fn,
     make_vllm_generate_fn,
+    protocol_stop_strings,
     run_search_agent_rollout,
 )
 from src.sft.prototype_builder import load_jsonl  # noqa: E402
@@ -41,7 +42,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-samples", type=int, default=8)
     p.add_argument("--top-k", type=int, default=5)
     p.add_argument("--max-search-turns", type=int, default=2)
-    p.add_argument("--memory-mode", choices=("none", "research"), default="none")
+    p.add_argument(
+        "--memory-mode", choices=("none", "research", "research_v2"), default="none"
+    )
     p.add_argument("--memory-evidence-limit", type=int, default=8)
     p.add_argument("--memory-char-budget", type=int, default=5000)
     p.add_argument("--max-new-tokens", type=int, default=512)
@@ -209,7 +212,11 @@ def main() -> None:
     model = None
     generate_fn = None
     if args.backend == "vllm_openai":
-        generate_fn = make_openai_completions_fn(args.vllm_base_url, args.vllm_model_name)
+        generate_fn = make_openai_completions_fn(
+            args.vllm_base_url,
+            args.vllm_model_name,
+            protocol_stop_strings(args.memory_mode),
+        )
         print(f"[phase3a] vllm_openai {args.vllm_base_url} model={args.vllm_model_name}", flush=True)
     elif args.backend == "vllm":
         from vllm import LLM
@@ -223,7 +230,7 @@ def main() -> None:
             max_model_len=args.max_model_len,
             enforce_eager=True,
         )
-        generate_fn = make_vllm_generate_fn(llm)
+        generate_fn = make_vllm_generate_fn(llm, protocol_stop_strings(args.memory_mode))
     else:
         model = AutoModelForCausalLM.from_pretrained(
             args.model_path,

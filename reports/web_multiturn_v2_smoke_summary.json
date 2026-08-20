@@ -1,0 +1,31 @@
+{
+  "date": "2026-08-20",
+  "stage": "W3-A diagnostic smoke",
+  "overall_gate": "W3_PILOT_INCOMPLETE",
+  "accepted_subset_gate": "W3_ACCEPTED_SUBSET_GATE_PASS",
+  "target": 6,
+  "accepted": 4,
+  "attempted": 60,
+  "decision_examples": 10,
+  "depth_counts": {"1": 2, "2": 2, "3": 0},
+  "rejection_reasons": {
+    "prematurely_sufficient": 38,
+    "query_not_observation_conditioned": 7,
+    "depth_mismatch": 5,
+    "teacher_answer_mismatch": 5,
+    "teacher_over_depth": 1
+  },
+  "accepted_subset_quality": {
+    "duplicate_extra_query_rate": 0.0,
+    "obs_conditioned_extra_query_rate": 1.0,
+    "new_source_extra_query_rate": 1.0,
+    "new_evidence_extra_query_rate": 1.0,
+    "serializer_replay_passed": 6,
+    "empty_observations": 0,
+    "retained_leak_urls": 0,
+    "invalid_evidence_document_refs": 0,
+    "training_examples_with_oracle_fields": 0
+  },
+  "scientific_read": "The builder and protocol work for genuine one- and two-search examples, but a hard three-search quota conflicts with HotpotQA plus Brave LLM Context because evidence is usually sufficient before the third search.",
+  "decision": "Do not train or force redundant depth-3 trajectories. Revise the pilot around minimal sufficient depth-1/2 examples (default 45/55/0); treat depth-3 as opportunistic or source it from a genuine three-hop Web-native pool."
+}

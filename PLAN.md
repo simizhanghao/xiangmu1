@@ -702,6 +702,122 @@ search API. Freeze Web-v1 provider to `brave_llm_context`; no proxy is justified
 This is a Tool-only fixed-slice diagnostic, not an Agent/L4 score. Next gate: frozen
 GRPO@400 Agent n=8 protocol smoke; only after health passes run n=30–50.
 
+### Frozen Web transfer gates (2026-08-20)
+
+The experiment now measures the frozen Controlled policy, not Web infrastructure.
+Do not change GRPO@400, action tokens, reward, Tool backend, prompt contract, or sample IDs
+between paired arms.
+
+**DONE — Gate W1 `PASS_WITH_WARNING`:** same 8 IDs completed with exit 0. No-Memory /
+ResearchMemory respectively: finish **1.000/0.875**, parse and observation-mask **1/1**,
+retrieval errors **0/0**, empty context **0/0**, Tool latency **0.638/0.768s**, Answer F1
+**0.50/0.50**. No leak URL was observed. Memory changed depth from mean **1.0→1.5**,
+but two episodes repeated the exact original query (one 4 searches, one 2 searches), and
+one episode emitted an empty answer. Infrastructure and protocol qualify W2; Memory
+effectiveness does not. W2 must distinguish adaptive reformulation/new evidence from
+duplicate retries rather than treating greater depth as success.
+
+**IN PROGRESS — Gate W2:** same fixed first 40 IDs, sequential paired arms in tmux
+`q8_web_w2`, log `logs/web_w2_pair_n40.log`. Frozen GRPO@400, Brave LLM Context,
+`max_search_turns=5`, and all generation/retrieval settings remain identical to W1.
+
+**DONE — Gate W2 `ZERO_SHOT_MEMORY_FAIL`:** infrastructure remains healthy (zero Tool
+errors/empty contexts/leak URLs), but behavior fails. No-Memory is 40/40 one-search with
+finish **1.00** and Answer F1 **0.4529**. ResearchMemory gives finish **0.925**, F1
+**0.4113**, mean depth **1.2**, and 5/40 multi-search episodes. All **8/8** extra searches
+are exact query duplicates; observation-conditioned rewrites, new sources after the first
+search, and new evidence after the first search are all **0/8**. Do not enlarge W2.
+
+### Web-MultiTurn-v2 — the only open training branch
+
+Goal: teach the frozen GRPO@400 policy to update `Known → Missing → SEARCH/ANSWER →
+Next Query`, not to maximize search count. Keep existing top-level tags; structured state
+lives inside `<internal>`, while executable actions remain `<search>` or final
+`<evidence>/<answer>`.
+
+```text
+W3-A pilot trajectory builder (first 100–200)
+  Hotpot train pool + Brave LLM Context + strong teacher
+  gold is builder-side accept/reject only; never teacher/policy input
+  variable depth target: 1-search sufficient, 2-search necessary, minority 3-search
+  save counterfactual STOP/CONTINUE metadata
+
+W3-B hard data gates before expansion/training
+  shared train/runtime serializer: WEB_MEMORY_PROTOCOL_PARITY_PASS
+  no benchmark leak; no empty observation
+  duplicate query <5%; obs-conditioned later query >80%; new source >80%
+  reject rather than train on failed trajectories
+
+W3-C only after W3-B
+  init frozen GRPO@400 + LoRA (r16, alpha32, dropout .05)
+  q/k/v/o + gate/up/down; ~1 epoch, lr ~1e-5, global batch 32, cutoff ~6K
+  40–60 optimizer steps; no full fine-tune
+
+W3-D frozen web-dev50
+  finish>=.95, parse=1, obs-mask=1
+  duplicate extra-query<=25%, obs-conditioned>=40%, new source>=40%,
+  new evidence>=30%, variable depth, Answer F1 regression<=2pp
+```
+
+Freeze an unused train-pool `web-dev50` and separate sealed `web-final50` before model
+development. ResearchMemory must be episode-only and compact: evidence claims/source IDs,
+1–3 missing items, previous queries, source title/URL, remaining budget; never retain full
+old page text. Data builder and AgentLoop must call one serializer. Web-v2 must explicitly
+support a stateful generation containing `<internal>...</internal><search>...</search>`;
+the old stop-at-`</internal>` behavior is a hard blocker and must be contract-tested.
+
+Stop rules: if pilot cannot yield hundreds of genuine observation-conditioned 2/3-hop
+examples, repair builder and do not train. If SFT duplicate>50% or obs-conditioned<20%,
+repair data/state and do not use RL. If W3-D passes, stop training and run final Web eval.
+Only behavior-correct SFT with poor search utility may open W4 information-gain RL; never
+use a uniform search-count penalty.
+
+**DONE — W3-A diagnostic smoke `W3_PILOT_INCOMPLETE`:** target 6 with depth quotas
+2/2/2; accepted 4 after 60 attempts (depth1=2, depth2=2, depth3=0), yielding 10
+decision examples. Rejections: prematurely sufficient 38, query not observation-conditioned
+7, depth mismatch 5, answer mismatch 5, teacher over-depth 1. The accepted subset passes
+all quality contracts: duplicate extra-query 0, observation-conditioned/new-source/
+new-evidence rates 1.0, serializer replay 6/6, empty/leak/oracle fields/invalid evidence
+references all 0. This is `W3_ACCEPTED_SUBSET_GATE_PASS`, **not** a complete pilot pass.
+
+Scientific decision: HotpotQA is predominantly two-hop and Brave LLM Context often
+returns sufficient evidence in one request. In this setting, requiring a third search
+creates artificial redundant trajectories—the exact failure mode Web-MultiTurn-v2 is
+supposed to remove. Do not train on four examples and do not force depth3. Revise the
+120-example pilot to genuine minimal sufficient depth1/2; keep depth3 opportunistic, or
+source it later from a genuinely 3-hop Web-native dataset. Run the revised pilot and its
+full W3-B gate before LoRA. Builder default is now 45% depth1 / 55% depth2 / 0 forced
+depth3 (54/66/0 at n=120); explicit depth quotas remain available for a future 3-hop pool.
+
+```text
+Gate W1 — paired protocol smoke, same first 8 IDs
+  GRPO@400 + Brave LLM Context + No-Memory
+  GRPO@400 + Brave LLM Context + ResearchMemory
+  max_search_turns=5 is a ceiling, never a quota
+  pass: finish≈1, parse=1, observation-mask=1, tool errors≈0,
+        empty context=0, tool latency seconds-level, leak filter clean
+  F1 is recorded but cannot stop the smoke.
+
+Gate W2 — paired behavior evaluation, same fixed n=40
+  run only after W1 health passes
+  report Answer F1/EM, finish, search-depth distribution, duplicate query,
+  observation-conditioned rewrite, new source/search, new evidence/search,
+  tool latency, context tokens and active stopping.
+```
+
+ResearchMemory remains episode-only: Known Evidence, Missing Information, previous
+queries, source URLs and remaining budget. Source provenance (`source_id`, title, URL,
+snippet/chunk, query/search turn) must be retained in traces, but Web-v1 must not change
+the policy output grammar or require citation tokens. Brave LLM Context is an abstracted
+SEARCH→context backend, not a claim of full OPEN/FIND browser control.
+
+After W2, stop the project line if depth varies, later queries depend on observations,
+new evidence is acquired, finish remains healthy and answers do not materially collapse.
+Open exactly one optional `Web-MultiTurn-v2` branch only if healthy Tool observations show
+persistent one-shot stopping, duplicate retries or failure to pivot. WebWalkerQA n=30–50
+is the later Web-native evaluation; OPEN/FIND, BrowseComp, proxy/VPS, vector DB,
+multi-agent and further reward/optimizer sweeps are not current blockers.
+
 **DONE 2026-08-20 held-out GRPO@400 n=500:** `HELDOUT_GRPO400_DONE`.
 `results/51_heldout_test/n500_grpo400/.../summary.json`. 1789s.
 Answer F1 **0.7493** / EM **0.668** / Evidence **0.7132** / Joint **0.5825** / finish **0.976** / search=1.0 / `p_search_2=0.108` / gen **312.5**.
