@@ -352,6 +352,97 @@ def make_openai_completions_fn(
     return _fn
 
 
+def make_atomic_openai_generate_fn(
+    base_url: str,
+    model: str,
+    tokenizer: PreTrainedTokenizerBase,
+    threshold: float,
+    stop_strings: Sequence[str] = _STOP_STRINGS,
+    fixed_remaining_budget: Optional[int] = None,
+) -> GenerateFn:
+    """vLLM completion wrapper: score atomic route, then generate branch content."""
+    import json
+    from urllib.request import Request, urlopen
+
+    url = base_url.rstrip("/") + "/completions"
+    prefill = "<internal>\nDecision:"
+    candidates = {"SEARCH": " SEARCH", "ANSWER": " ANSWER"}
+    forced = {
+        "SEARCH": "<internal>\nDecision: SEARCH\nNext Query:",
+        "ANSWER": "<internal>\nDecision: ANSWER\n</internal>\n",
+    }
+    candidate_lens = {
+        name: len(tokenizer.encode(text, add_special_tokens=False))
+        for name, text in candidates.items()
+    }
+
+    def request(payload: Dict[str, Any]) -> Dict[str, Any]:
+        req = Request(
+            url, data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"}, method="POST",
+        )
+        with urlopen(req, timeout=300) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def candidate_score(prompt: str, name: str) -> float:
+        score_prompt = prompt
+        if fixed_remaining_budget is not None:
+            score_prompt = re.sub(
+                r"Remaining Budget:\s*\d+",
+                f"Remaining Budget: {fixed_remaining_budget}", score_prompt,
+            )
+        data = request({
+            "model": model, "prompt": score_prompt + prefill + candidates[name],
+            "max_tokens": 1, "temperature": 0.0, "echo": True, "logprobs": 1,
+        })
+        values = ((data.get("choices") or [{}])[0].get("logprobs") or {}).get("token_logprobs") or []
+        n = candidate_lens[name]
+        selected = values[-(n + 1):-1]
+        if len(selected) != n or any(x is None for x in selected):
+            raise RuntimeError(f"atomic score unavailable for {name}: {selected}")
+        return float(sum(selected))
+
+    def _fn(
+        prompt: str,
+        *,
+        max_new_tokens: int,
+        temperature: float,
+        top_p: float = 1.0,
+        seed: Optional[int] = None,
+    ) -> Tuple[str, int, int]:
+        search = candidate_score(prompt, "SEARCH")
+        answer = candidate_score(prompt, "ANSWER")
+        margin = search - answer
+        route = "SEARCH" if margin > float(threshold) else "ANSWER"
+        _fn.decision_events.append({  # type: ignore[attr-defined]
+            "logp_search": search, "logp_answer": answer,
+            "margin_search_minus_answer": margin,
+            "threshold": float(threshold), "route": route,
+            "fixed_remaining_budget": fixed_remaining_budget,
+        })
+        branch = forced[route]
+        payload: Dict[str, Any] = {
+            "model": model, "prompt": prompt + branch,
+            "max_tokens": int(max_new_tokens),
+            "temperature": 0.0 if temperature <= 0 else float(temperature),
+            "stop": list(stop_strings), "include_stop_str_in_output": True,
+        }
+        if temperature > 0:
+            payload["top_p"] = float(top_p)
+        if seed is not None:
+            payload["seed"] = int(seed)
+        data = request(payload)
+        text = _truncate_at_stop((data.get("choices") or [{}])[0].get("text") or "", stop_strings)
+        usage = data.get("usage") or {}
+        forced_tokens = len(tokenizer.encode(branch, add_special_tokens=False))
+        prompt_tokens = max(0, int(usage.get("prompt_tokens") or 0) - forced_tokens)
+        generated_tokens = int(usage.get("completion_tokens") or 0) + forced_tokens
+        return branch + text, prompt_tokens, generated_tokens
+
+    _fn.decision_events = []  # type: ignore[attr-defined]
+    return _fn
+
+
 @torch.inference_mode()
 def _generate_until_action(
     model: Optional[PreTrainedModel],
@@ -414,6 +505,7 @@ def run_search_agent_rollout(
     tokenizer: PreTrainedTokenizerBase,
     config: Optional[RolloutConfig] = None,
     generate_fn: Optional[GenerateFn] = None,
+    atomic_generate_fn: Optional[GenerateFn] = None,
     generation_seed: Optional[int] = None,
     prefix_search_queries: Optional[Sequence[str]] = None,
     finalize_after_prefix: bool = False,
@@ -424,6 +516,8 @@ def run_search_agent_rollout(
     retrieve = retrieve_fn or retrieve_candidate_bm25
     if generate_fn is None and model is None:
         raise ValueError("run_search_agent_rollout needs model or generate_fn")
+    atomic_events = getattr(atomic_generate_fn, "decision_events", None)
+    atomic_event_start = len(atomic_events) if atomic_events is not None else 0
     t0 = time.perf_counter()
 
     question = sample["question"]
@@ -570,13 +664,21 @@ def run_search_agent_rollout(
 
     for _round in range(cfg.max_rounds):
         generation_started = time.perf_counter()
+        # W4 controller is calibrated only for post-observation sufficiency.
+        # Initial action and forced finalization retain the native generator.
+        selected_generate_fn = (
+            atomic_generate_fn
+            if atomic_generate_fn is not None and search_turns > 0
+            and phase == "act" and not finalize_only
+            else generate_fn
+        )
         chunk, ptok, gtok = _generate_until_action(
             model,
             tokenizer,
             messages,
             max_new_tokens=_token_budget(phase, cfg),
             temperature=cfg.temperature,
-            generate_fn=generate_fn,
+            generate_fn=selected_generate_fn,
             top_p=cfg.top_p,
             seed=generation_seed,
             stop_strings=protocol_stop_strings(cfg.memory_mode),
@@ -792,6 +894,9 @@ def run_search_agent_rollout(
             "top_k": cfg.top_k,
             "retriever_scope": retriever_scope,
             "memory_mode": cfg.memory_mode,
+            "atomic_decisions": (
+                list(atomic_events[atomic_event_start:]) if atomic_events is not None else []
+            ),
             "research_memory": research_memory.summary() if research_memory is not None else None,
             "retrieval_error_count": retrieval_error_count,
             "empty_retrieval_count": empty_retrieval_count,

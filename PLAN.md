@@ -1086,6 +1086,61 @@ end-to-end finish estimate; even treating both truncated D2 cases as SEARCH give
 `WEBMT_BEHAVIOR_FAIL`, no natural Web-dev50, no third tuning round, and GRPO@400 remains
 the deployable frozen policy. W3 training is closed as a documented negative result.
 
+### W4 — Atomic Decision Calibration
+
+W3 closed long-response CE, not the project. The only active question is whether the
+frozen LoRA-v2 state representation already separates sufficient D1 states from
+insufficient D2 states but free generation uses a poor operating threshold.
+
+**ACTIVE — W4-0 Decision Score Audit:** use the unchanged behavior-dev40 raw chat state
+(system, question, prior action and Tool observation). Do not inject gold `Known`,
+`Missing`, supporting titles, answers or depth labels. After the native assistant prefix,
+prefill only `<internal>\nDecision:` and teacher-force the symmetric atomic candidates
+` SEARCH` and ` ANSWER`. Define margin `m=logP(SEARCH)-logP(ANSWER)`, then report D1/D2
+quartiles, AUROC, AUPRC and the complete threshold curve. Threshold calibration is allowed
+only if some tau satisfies STOP@D1>=70% and CONTINUE@D2>=60% on behavior-dev40.
+
+Decision tree is frozen: if W4-0 has a feasible threshold, do not train. Otherwise build
+consequence-aware preference pairs solely from existing audited causal states and run one
+Chain-of-Calibration attempt initialized from LoRA-v2; no new Web, Teacher, Retriever,
+reward, CE round or trajectory generation. If that still fails and AUROC<0.75, the only
+remaining fallback is a small explicit state-sufficiency router. No DPO beta/LR sweep.
+Natural Web-dev50 remains blocked until the original behavior gates pass.
+
+**INVALIDATED DIAGNOSTIC — unsanitized W4-0:** the first AUROC=0.910 result was inflated
+by a builder-side label leak: D1 states rendered `Remaining Budget: 0`, while D2 rendered
+`Remaining Budget: 1`. It must not be cited as evidence that the model learned sufficiency.
+All W4 scoring and calibration states now replace this field with the constant value 4.
+
+**DONE — leakage-free W4-0:** with fixed budget=4, HF gives AUROC=0.775/AUPRC=0.825 and
+vLLM gives AUROC=0.780/AUPRC=0.830. The backend-specific tau=-3.9687 gives routing-only
+STOP@D1=85% and CONTINUE@D2=70%. Full forced behavior is STOP=85%, CONTINUE=70%,
+duplicate Q2=5%, finish=100%, but observation-conditioned Q2=50% (<60%): FAIL. Manual
+inspection confirms all four failed Q2 are generic/repeated queries rather than heuristic
+false negatives. The previous statement that every generated Q2 was conditioned applied
+only to the small self-selected subset that chose SEARCH and does not generalize after the
+controller increases recall.
+
+**DONE — controlled integration failure:** the same sanitized vLLM controller on a natural
+Candidate-BM25 n=4 smoke sends all 8 post-observation states to SEARCH; all four samples
+hit the three-search cap (mean duplicate=1, finish=100%, EM=75%). Recorded margins range
+from -3.19 to -0.37 at Obs1 and -3.12 to -1.50 later, all above tau=-3.9687. Therefore
+threshold-only calibration does not transfer from frozen graph-replay states to natural
+Agent states. Web evaluation remains blocked.
+
+**DONE — single W4-1 Chain-of-Calibration, final FAIL:** used only the disjoint audited 440 graph
+trajectories. Build 440 balanced preference pairs: 110 D1@Obs1 STOP, 220 D2@Obs1
+CONTINUE with the grounded Q2, and 110 D2@Obs2 STOP. Chosen labels are exactly balanced
+ANSWER/SEARCH=220/220; responses contain only atomic decision plus a short grounded
+consequence, never long Web text. Every prompt fixes Remaining Budget=4 and has zero
+behavior-dev overlap. Initialize from merged LoRA-v2, frozen reference LoRA-v2, DPO one
+epoch, one LR/beta only. Training completed 28 steps in 251.5s; mean loss=0.6577 and
+step loss moved 0.6931→0.6312. Independent behavior-dev gives AUROC=0.7825 (only +0.0075),
+AUPRC=0.8282, STOP@D1=85%, CONTINUE@D2=70%, duplicate=5%, finish=100%, but unchanged
+observation-conditioned Q2=50%; `W4_BEHAVIOR_GATE_FAIL`. Therefore CoC did not materially
+repair held-out behavior. Do not run a DPO beta/LR/epoch sweep and do not open natural Web.
+Full evidence is in `docs/W4_ATOMIC_DECISION_REPORT.md`.
+
 Every accepted trajectory exports both `trajectories.jsonl` for replay/audit and
 `decision_sft.jsonl` for step-level `state → SEARCH/ANSWER` CE. Previous raw observations
 are compressed into the shared ResearchMemory; only the latest Tool observation remains

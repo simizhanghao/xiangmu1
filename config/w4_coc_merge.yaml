@@ -1,0 +1,10 @@
+model_name_or_path: /data1/hcc/deepresearch/Dee/outputs/65_webmt_lora_v2_token_balanced_merged
+adapter_name_or_path: /data1/hcc/deepresearch/Dee/outputs/68_w4_coc_dpo
+template: qwen3_nothink
+trust_remote_code: true
+finetuning_type: lora
+
+export_dir: /data1/hcc/deepresearch/Dee/outputs/69_w4_coc_merged
+export_size: 5
+export_device: auto
+export_legacy_format: false

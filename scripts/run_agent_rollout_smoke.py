@@ -24,6 +24,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from src.agents.react_loop import (  # noqa: E402
     RolloutConfig,
     make_openai_completions_fn,
+    make_atomic_openai_generate_fn,
     make_vllm_generate_fn,
     protocol_stop_strings,
     run_search_agent_rollout,
@@ -60,6 +61,8 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--vllm-base-url", type=str, default="http://127.0.0.1:18000/v1")
     p.add_argument("--vllm-model-name", type=str, default="sft8b")
+    p.add_argument("--atomic-decision-threshold", type=float, default=None)
+    p.add_argument("--atomic-fixed-remaining-budget", type=int, default=None)
     p.add_argument("--gpu-memory-utilization", type=float, default=0.6)
     p.add_argument("--max-model-len", type=int, default=8192)
     p.add_argument("--retriever-scope", choices=("candidate", "web"), default="candidate")
@@ -211,12 +214,19 @@ def main() -> None:
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, local_files_only=True)
     model = None
     generate_fn = None
+    atomic_generate_fn = None
     if args.backend == "vllm_openai":
         generate_fn = make_openai_completions_fn(
             args.vllm_base_url,
             args.vllm_model_name,
             protocol_stop_strings(args.memory_mode),
         )
+        if args.atomic_decision_threshold is not None:
+            atomic_generate_fn = make_atomic_openai_generate_fn(
+                args.vllm_base_url, args.vllm_model_name, tokenizer,
+                args.atomic_decision_threshold, protocol_stop_strings(args.memory_mode),
+                args.atomic_fixed_remaining_budget,
+            )
         print(f"[phase3a] vllm_openai {args.vllm_base_url} model={args.vllm_model_name}", flush=True)
     elif args.backend == "vllm":
         from vllm import LLM
@@ -273,6 +283,7 @@ def main() -> None:
                 tokenizer,
                 cfg,
                 generate_fn=generate_fn,
+                atomic_generate_fn=atomic_generate_fn,
                 retrieve_fn=retrieve_fn,
                 retriever_scope=args.retriever_scope,
             )
@@ -334,6 +345,8 @@ def main() -> None:
                 args.web_context_tokens if args.retriever_scope == "web" else None
             ),
             "memory_mode": args.memory_mode,
+            "atomic_decision_threshold": args.atomic_decision_threshold,
+            "atomic_fixed_remaining_budget": args.atomic_fixed_remaining_budget,
             "gates_hint": {
                 "finish_rate_target": ">=0.8",
                 "observation_mask_ok_target": 1.0,
