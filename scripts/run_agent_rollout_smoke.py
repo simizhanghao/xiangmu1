@@ -41,6 +41,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--eval-file", type=str, default="data/eval/hotpotqa_200.jsonl")
     p.add_argument("--output-dir", type=str, default=str(REPO_ROOT / "results"))
     p.add_argument("--max-samples", type=int, default=8)
+    p.add_argument("--sample-offset", type=int, default=0)
     p.add_argument("--top-k", type=int, default=5)
     p.add_argument("--max-search-turns", type=int, default=2)
     p.add_argument(
@@ -74,6 +75,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--web-timeout", type=float, default=45.0)
     p.add_argument("--web-retries", type=int, default=3)
     p.add_argument("--web-context-tokens", type=int, default=4096)
+    p.add_argument("--collect-post-observation-only", action="store_true")
     return p.parse_args()
 
 
@@ -195,7 +197,8 @@ def main() -> None:
     torch.manual_seed(args.seed)
 
     eval_path = resolve(args.eval_file)
-    samples = load_jsonl(str(eval_path))[: args.max_samples]
+    all_samples = load_jsonl(str(eval_path))
+    samples = all_samples[args.sample_offset : args.sample_offset + args.max_samples]
     if not samples:
         raise SystemExit(f"no samples in {eval_path}")
 
@@ -286,6 +289,7 @@ def main() -> None:
                 atomic_generate_fn=atomic_generate_fn,
                 retrieve_fn=retrieve_fn,
                 retriever_scope=args.retriever_scope,
+                stop_after_observation=args.collect_post_observation_only,
             )
             tr = result.trace.to_jsonl_dict()
             tf.write(json.dumps(tr, ensure_ascii=False) + "\n")
@@ -347,6 +351,8 @@ def main() -> None:
             "memory_mode": args.memory_mode,
             "atomic_decision_threshold": args.atomic_decision_threshold,
             "atomic_fixed_remaining_budget": args.atomic_fixed_remaining_budget,
+            "sample_offset": args.sample_offset,
+            "collect_post_observation_only": args.collect_post_observation_only,
             "gates_hint": {
                 "finish_rate_target": ">=0.8",
                 "observation_mask_ok_target": 1.0,

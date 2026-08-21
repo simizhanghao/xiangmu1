@@ -1141,6 +1141,79 @@ observation-conditioned Q2=50%; `W4_BEHAVIOR_GATE_FAIL`. Therefore CoC did not m
 repair held-out behavior. Do not run a DPO beta/LR/epoch sweep and do not open natural Web.
 Full evidence is in `docs/W4_ATOMIC_DECISION_REPORT.md`.
 
+### W5 — Modular Research Controller (final project route)
+
+**LOCKED 2026-08-21:** W3/W4 are closed hypothesis tests. Do not run another 8B LoRA,
+DPO, threshold, reward, beta/LR/epoch or replay experiment. Freeze GRPO@400 as Executor,
+Bocha as Web provider, and the current `ResearchMemory` serializer. Search-depth control
+and next-query generation move into one independent Controller; the external
+`<search>/<evidence>/<answer>` protocol stays unchanged.
+
+**W5-A natural state collection:** freeze the formal train-only 5K questions into a
+question-disjoint controller train/dev split (4,500/500). Run the deployed GRPO@400 +
+Bocha + ResearchMemory policy and persist each real post-observation state. Label grounded
+sufficient states STOP and grounded-insufficient states CONTINUE; create paired CONTINUE
+siblings by masking critical evidence from natural sufficient states. Gold may be used
+only by the offline label/checker, never by Controller inputs or query generation. Target
+about 5K usable states, balanced STOP/CONTINUE, with at least 50% natural on-policy states.
+
+**ACTIVE — W5-A collection:** deterministic seed-42 split is frozen at train=4,500 /
+dev=500 with zero question overlap and recorded SHA-256 manifests. The n=8 Bocha smoke
+produced 8/8 natural Search1 states with zero retrieval errors/empty results and mean 4.75
+new evidence items. Candidate construction retained 8 natural states and made 2 paired
+answer-evidence-masked siblings; these remain checker candidates, not final labels.
+Collection mode now stops immediately after Search1 observation (n=2 latency 1.28s), and
+re-renders the frozen ResearchMemory with deployment ceiling 4 so the stored post-Search1
+state has Remaining Budget=3 rather than the smoke cap's leaked zero. The fixed 5K
+collection is complete. Bocha quota exhaustion interrupted the first pass; resume reused
+all 770 valid states and recollected only the 4,230 pending IDs. Final natural routing has
+4,998 valid post-Search1 states plus two reproducible direct-answer states (99.96%
+post-observation coverage), with no invalid retrieval state retained. This is the frozen
+on-policy result; the two direct answers must not be force-searched. No Controller
+training starts before grounded checker and final data/leakage gates pass. Grounded-
+checker smoke passed on 20/20 states with zero malformed/API failures, STOP=3,
+CONTINUE=17, and masked-sibling CONTINUE=5/5. Full labeling covers 4,998 natural plus
+1,258 masked states and is resumable. This stage calls DeepSeek only; it neither calls
+Bocha nor generates Controller queries. The full grounded-label gate then passed after
+conservative adjudication: 854 STOP labels accepted, 19 weak STOP labels demoted to
+CONTINUE, masked CONTINUE consistency 90.38%, train/dev overlap zero, and no structural
+gold fields exported. A 20-state no-gold MISSING+QUERY smoke passed at 100% valid,
+0% duplicate and 100% state-conditioned. The frozen full query queue contains 2,229
+states (1,400 train-natural, 400 train-masked, 429 dev-natural).
+
+For CONTINUE states, a frozen Teacher sees only question, state, observation and previous
+queries and emits the compact internal schema `DECISION: CONTINUE`, `MISSING`, `QUERY`.
+Automatic gates require non-duplicate query and either an Observation entity or an
+explicit Missing target. STOP emits only `DECISION: STOP`. No long reasoning or answer is
+a Controller target.
+
+**CLOSED — W5 OFFLINE GATE FAIL (2026-08-21):** Qwen3-1.7B Controller completed 386
+steps without system failure, but frozen natural-dev500 produced AUROC=0.8564,
+STOP recall=0.7042, CONTINUE recall=0.8019, balanced accuracy=0.7530. Query behavior
+was strong (duplicate=3.57%, state-conditioned=100%), so the unresolved failure is the
+STOP/CONTINUE sufficiency boundary. Exhaustive threshold audit found best balanced
+accuracy=0.7883 and zero thresholds meeting 80/80. Per the precommitted terminal rule,
+stop all model training; do not connect live Web or run final50. See
+`docs/W5_MODULAR_CONTROLLER_REPORT.md`.
+
+**W5-B Controller:** Qwen3-1.7B-Instruct, loss=`L_decision + L_query` with lambda=1,
+global batch about 16, one fixed configuration, 1–2 epochs (roughly 300–600 optimizer
+updates). This is the only remaining training route; do not train before W5-A data and
+leakage gates pass.
+
+**W5-C frozen natural controller-dev500:** question-level disjoint from train and not
+label-resampled (observed STOP=71 / CONTINUE=429). Class-specific recall and balanced
+accuracy prevent this natural imbalance from inflating the gate. Required: AUROC>=0.90,
+STOP recall>=80%, CONTINUE recall>=80%, balanced accuracy>=0.80, duplicate query<=10%,
+state-conditioned query>=70%.
+
+Only after W5-C PASS, connect Controller + frozen GRPO@400 Executor + Bocha with adaptive
+budget ceiling 4. Natural Web requires finish>=95%, neither all-depth-1 nor all-at-cap,
+duplicate extra-query<=20%, state-conditioned query>=60%, positive new evidence/search,
+and Answer F1 within 2pp of the GRPO@400 Web baseline. Then run web-final50 once and stop.
+If the dedicated Controller trained on about 5K natural/paired states fails the 80/80
+offline recall gate, stop all model training and report modular adaptive depth as not met.
+
 Every accepted trajectory exports both `trajectories.jsonl` for replay/audit and
 `decision_sft.jsonl` for step-level `state → SEARCH/ANSWER` CE. Previous raw observations
 are compressed into the shared ResearchMemory; only the latest Tool observation remains

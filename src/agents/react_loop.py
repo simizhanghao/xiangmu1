@@ -511,6 +511,7 @@ def run_search_agent_rollout(
     finalize_after_prefix: bool = False,
     retrieve_fn: Optional[RetrieveFn] = None,
     retriever_scope: str = "candidate",
+    stop_after_observation: bool = False,
 ) -> RolloutResult:
     cfg = config or RolloutConfig()
     retrieve = retrieve_fn or retrieve_candidate_bm25
@@ -821,6 +822,8 @@ def run_search_agent_rollout(
 
         messages.append({"role": "assistant", "content": chunk})
         messages.append({"role": "observation", "content": obs_body})
+        if stop_after_observation:
+            break
         if search_turns >= cfg.max_search_turns:
             finalize_only = True
             phase = "evidence"
