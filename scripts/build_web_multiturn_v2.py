@@ -9,6 +9,7 @@ the frozen XML action protocol by code.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -54,6 +55,12 @@ def args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument("--pool", type=Path, default=DEFAULT_POOL)
     p.add_argument(
+        "--pool-scope",
+        choices=("project_hotpot", "external_webshaper", "external_isolated"),
+        default="project_hotpot",
+        help="External isolated rows are not partitioned by the project's Hotpot dev/final freezer.",
+    )
+    p.add_argument(
         "--candidate-manifest",
         type=Path,
         help="Depth-aware JSONL from mine_web_depth_candidates.py; required for formal pilot.",
@@ -80,6 +87,12 @@ def args() -> argparse.Namespace:
     )
     p.add_argument("--top-k", type=int, default=5)
     p.add_argument("--tokenizer-path", type=Path, default=ROOT / "model")
+    p.add_argument(
+        "--query-beam-size",
+        type=int,
+        default=1,
+        help="Deterministic post-Obs1 query proposals; only supported for D2 construction.",
+    )
     p.add_argument("--max-depth", type=int, default=3)
     p.add_argument("--smoke", action="store_true", help="Build target=6 with quotas 2/2/2.")
     p.add_argument("--quota-depth1", type=int)
@@ -176,6 +189,9 @@ Return one JSON object with keys: known (array of concise source-grounded claims
 answer (string), source_ids (array like S1), and rationale (short string).
 Use only supplied Web evidence. For SEARCH, next_query must target Missing, incorporate a
 concrete entity learned from observations when possible, and never repeat Previous Queries.
+If query_beam_size is greater than 1 and the decision is SEARCH, also return next_queries:
+an ordered array of exactly that many distinct, concise queries. Every query must target
+the same Missing state, depend on supplied observations, and must not repeat prior queries.
 For ANSWER, missing must be empty and answer/source_ids must be grounded. The answer must
 be the shortest directly answering span, not an explanation or sentence. Do not output XML."""
     headers = {"Content-Type": "application/json"}
@@ -352,7 +368,7 @@ def build_decision_example(
     }
 
 
-def build_one(
+def _build_one_single(
     sample: dict[str, Any],
     target_depth: int,
     cfg: argparse.Namespace,
@@ -386,18 +402,22 @@ def build_one(
                 "rationale": "fixed mined Search1",
             }
         else:
-            payload = {
-                "question": question,
-                "desired_max_depth": target_depth,
-                "decision_index": decision_index,
-                "instruction": (
-                    "Use the minimum sufficient sequential searches. For depth>1, decompose dependencies; "
-                    "do not copy the full question as every query. ANSWER immediately when evidence is sufficient."
-                ),
-                "research_memory": serialize_research_memory(memory),
-                "latest_observation": previous_observation,
-            }
-            decision = validate_decision(teacher_call(cfg, payload))
+            preselected = getattr(cfg, "preselected_q2_decision", None)
+            if decision_index == 1 and preselected is not None:
+                decision = dict(preselected)
+            else:
+                payload = {
+                    "question": question,
+                    "desired_max_depth": target_depth,
+                    "decision_index": decision_index,
+                    "instruction": (
+                        "Use the minimum sufficient sequential searches. For depth>1, decompose dependencies; "
+                        "do not copy the full question as every query. ANSWER immediately when evidence is sufficient."
+                    ),
+                    "research_memory": serialize_research_memory(memory),
+                    "latest_observation": previous_observation,
+                }
+                decision = validate_decision(teacher_call(cfg, payload))
         if len(memory.searches) == 1:
             missing_after_search1 = list(decision["missing"])
         internal = internal_text(decision)
@@ -520,10 +540,14 @@ def build_one(
         previous_observation = raw
         accumulated += "\n" + raw
         if target_depth == 2 and len(memory.searches) == 1:
-            try:
-                forced1 = forced_answer_call(cfg, question, memory, raw)
-            except Exception:
-                return None, "forced1_teacher_error"
+            precomputed_forced1 = getattr(cfg, "precomputed_forced1", None)
+            if precomputed_forced1 is not None:
+                forced1 = dict(precomputed_forced1)
+            else:
+                try:
+                    forced1 = forced_answer_call(cfg, question, memory, raw)
+                except Exception:
+                    return None, "forced1_teacher_error"
             if forced1["decision"] != "ANSWER":
                 return None, "forced1_protocol_error"
             forced1_sources = set(forced1["source_ids"])
@@ -556,6 +580,148 @@ def build_one(
     return None, "no_final_answer"
 
 
+def build_one(
+    sample: dict[str, Any],
+    target_depth: int,
+    cfg: argparse.Namespace,
+    web: WebAdapter,
+    initial_query: str | None = None,
+    initial_documents: list[dict[str, Any]] | None = None,
+) -> tuple[dict[str, Any] | None, str]:
+    """Build one trajectory, optionally rejection-sampling Q2 on one frozen state.
+
+    Beam mode is deliberately narrow: one gold-blind teacher call proposes an
+    ordered list of Q2 actions, while the unchanged single-path builder executes
+    and causally validates each branch. Gold never enters the proposal payload.
+    """
+    beam_size = int(getattr(cfg, "query_beam_size", 1))
+    if beam_size <= 1 or target_depth != 2:
+        return _build_one_single(
+            sample, target_depth, cfg, web, initial_query, initial_documents
+        )
+    if not initial_documents:
+        return None, "query_beam_requires_frozen_obs1"
+
+    question = str(sample["question"])
+    query1 = " ".join(str(initial_query or question).split())
+    golds = [str(x) for x in sample.get("gold_answers") or []]
+    memory = ResearchMemory(question, max_searches=2, evidence_limit=8, char_budget=4500)
+    initial_decision = {
+        "known": [],
+        "missing": ["Evidence needed to answer the question"],
+        "decision": "SEARCH",
+        "next_query": query1,
+        "answer": "",
+        "source_ids": [],
+        "rationale": "fixed mined Search1",
+    }
+    memory.update_from_internal(internal_text(initial_decision))
+    memory.add_search(query1, initial_documents)
+    raw_obs1 = format_observation_text(initial_documents)
+    if answer_hit(raw_obs1, golds):
+        return None, "prematurely_sufficient"
+    try:
+        forced1 = forced_answer_call(cfg, question, memory, raw_obs1)
+    except Exception:
+        return None, "forced1_teacher_error"
+    if forced1["decision"] != "ANSWER":
+        return None, "forced1_protocol_error"
+    available_sources = {x.source_id for x in memory.evidence}
+    forced1_sources = set(forced1["source_ids"])
+    forced1_sufficient = (
+        acceptance_f1(forced1["answer"], golds) >= 0.8
+        and not forced1["missing"]
+        and bool(forced1_sources)
+        and forced1_sources.issubset(available_sources)
+    )
+    if forced1_sufficient:
+        return None, "forced1_already_correct"
+
+    payload = {
+        "question": question,
+        "desired_max_depth": 2,
+        "decision_index": 1,
+        "query_beam_size": beam_size,
+        "instruction": (
+            "Search1 is insufficient. Identify one Missing state, then propose exactly "
+            f"{beam_size} deterministic, distinct, observation-conditioned Q2 queries in "
+            "next_queries, ordered best-first. Do not answer and do not use reference answers."
+        ),
+        "research_memory": serialize_research_memory(memory),
+        "latest_observation": raw_obs1,
+    }
+    try:
+        raw_decision = teacher_call(cfg, payload)
+        base_decision = validate_decision(raw_decision)
+    except Exception:
+        return None, "query_beam_teacher_error"
+    if base_decision["decision"] != "SEARCH":
+        return None, "query_beam_teacher_answered"
+
+    proposals = raw_decision.get("next_queries") or []
+    if not isinstance(proposals, list):
+        proposals = []
+    proposals = [base_decision["next_query"], *[str(x) for x in proposals]]
+    queries: list[str] = []
+    seen = {qnorm(query1)}
+    for value in proposals:
+        query = " ".join(str(value).split())
+        if query and qnorm(query) not in seen:
+            seen.add(qnorm(query))
+            queries.append(query)
+        if len(queries) == beam_size:
+            break
+
+    attempts: list[dict[str, Any]] = []
+    selected: dict[str, Any] | None = None
+    for index, query in enumerate(queries):
+        conditioning = query_conditioning(
+            query, question, raw_obs1, base_decision["missing"]
+        )
+        if conditioning == "none":
+            attempts.append({"index": index, "query": query, "reason": "query_not_observation_conditioned"})
+            continue
+        branch_decision = dict(base_decision)
+        branch_decision["next_query"] = query
+        branch_cfg = copy.copy(cfg)
+        branch_cfg.query_beam_size = 1
+        branch_cfg.preselected_q2_decision = branch_decision
+        branch_cfg.precomputed_forced1 = forced1
+        row, reason = _build_one_single(
+            sample, 2, branch_cfg, web, query1, initial_documents
+        )
+        attempts.append({"index": index, "query": query, "reason": reason})
+        if row is not None:
+            selected = row
+            selected["query_beam_audit"] = {
+                "beam_size_requested": beam_size,
+                "beam_size_returned": len(queries),
+                "selected_index": index,
+                "selected_query": query,
+                "attempts": attempts,
+                "teacher_gold_visible": False,
+            }
+            break
+
+    diagnostic = {
+        "sample_id": sample["sample_id"],
+        "beam_size_requested": beam_size,
+        "beam_size_returned": len(queries),
+        "queries": queries,
+        "attempts": attempts,
+        "accepted": selected is not None,
+        "teacher_gold_visible": False,
+    }
+    diagnostic_path = getattr(cfg, "query_beam_diagnostic_log", None)
+    if diagnostic_path:
+        append_jsonl(Path(diagnostic_path), diagnostic)
+    if selected is not None:
+        return selected, "accepted"
+    if not queries:
+        return None, "query_beam_empty"
+    return None, "query_beam_exhausted"
+
+
 def main() -> None:
     cfg = args()
     from transformers import AutoTokenizer
@@ -567,8 +733,14 @@ def main() -> None:
         cfg.target = 6
         cfg.max_candidates = min(cfg.max_candidates, 60)
     cfg.output_dir.mkdir(parents=True, exist_ok=True)
+    if cfg.query_beam_size < 1:
+        raise SystemExit("QUERY_BEAM_CONFIG_FAIL: query-beam-size must be >=1")
+    cfg.query_beam_diagnostic_log = cfg.output_dir / "query_beam_diagnostics.jsonl"
     pool = load_jsonl(str(cfg.pool))
-    dev_ids, final_ids = freeze_splits(pool, cfg.seed)
+    if cfg.pool_scope == "project_hotpot":
+        dev_ids, final_ids = freeze_splits(pool, cfg.seed)
+    else:
+        dev_ids, final_ids = set(), set()
     candidates = [x for x in pool if str(x["sample_id"]) not in dev_ids | final_ids]
     mined_depth: dict[str, int] = {}
     mined_query: dict[str, str] = {}
@@ -610,7 +782,7 @@ def main() -> None:
     accepted_path = cfg.output_dir / "trajectories.jsonl"
     rejected_path = cfg.output_dir / "rejected.jsonl"
     if not cfg.resume:
-        for path in (accepted_path, rejected_path):
+        for path in (accepted_path, rejected_path, cfg.query_beam_diagnostic_log):
             path.unlink(missing_ok=True)
     accepted: list[dict[str, Any]] = []
     reasons: dict[str, int] = {}
@@ -694,6 +866,10 @@ def main() -> None:
         "web_provider": cfg.web_provider,
         "candidate_manifest": str(cfg.candidate_manifest) if cfg.candidate_manifest else None,
         "minimal_depth_counterfactual": True,
+        "query_beam_size": cfg.query_beam_size,
+        "query_beam_diagnostics": str(cfg.query_beam_diagnostic_log),
+        "query_beam_accepted": sum("query_beam_audit" in x for x in accepted),
+        "pool_scope": cfg.pool_scope,
     }
     (cfg.output_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2), flush=True)

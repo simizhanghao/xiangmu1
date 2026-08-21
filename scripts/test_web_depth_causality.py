@@ -17,6 +17,9 @@ class FakeWeb:
         if query == sample["question"]:
             text = "Film X was directed by Ada Example."
             doc_id = "web_film"
+        elif "occupation" in query:
+            text = "Ada Example worked as an artist."
+            doc_id = "web_ada_job"
         else:
             text = "Ada Example was born in London."
             doc_id = "web_ada"
@@ -44,7 +47,15 @@ def fake_teacher(cfg, payload):
         return {"known": [], "missing": [], "decision": "ANSWER", "next_query": "", "answer": "unknown", "source_ids": []}
     if "London" in observation:
         return {"known": ["Ada was born in London [S2]"], "missing": [], "decision": "ANSWER", "next_query": "", "answer": "London", "source_ids": ["S2"]}
-    return {"known": ["Film X was directed by Ada Example [S1]"], "missing": ["Ada's birthplace"], "decision": "SEARCH", "next_query": "Ada Example birthplace", "answer": "", "source_ids": ["S1"]}
+    result = {"known": ["Film X was directed by Ada Example [S1]"], "missing": ["Ada's birthplace"], "decision": "SEARCH", "next_query": "Ada Example birthplace", "answer": "", "source_ids": ["S1"]}
+    if int(payload.get("query_beam_size") or 1) > 1:
+        result["next_query"] = "Ada Example occupation"
+        result["next_queries"] = [
+            "Ada Example occupation",
+            "Ada Example birthplace",
+            "Ada Example biography born city",
+        ]
+    return result
 
 
 def main() -> None:
@@ -57,7 +68,7 @@ def main() -> None:
     row, reason = builder.build_one(
         sample,
         2,
-        SimpleNamespace(top_k=5, memory_tokenizer=FakeTokenizer()),
+        SimpleNamespace(top_k=5, memory_tokenizer=FakeTokenizer(), query_beam_size=1),
         FakeWeb(),
         initial_query=sample["question"],
         initial_documents=FakeWeb().retrieve(sample, sample["question"], 5)["documents"],
@@ -78,6 +89,24 @@ def main() -> None:
         ["Peter Szewczyk's nationality"],
     ) == "missing_state_refinement"
     assert builder.acceptance_f1("3rd", ["the third"]) == 1.0
+
+    beam_row, beam_reason = builder.build_one(
+        sample,
+        2,
+        SimpleNamespace(
+            top_k=5,
+            memory_tokenizer=FakeTokenizer(),
+            query_beam_size=3,
+            query_beam_diagnostic_log=None,
+        ),
+        FakeWeb(),
+        initial_query=sample["question"],
+        initial_documents=FakeWeb().retrieve(sample, sample["question"], 5)["documents"],
+    )
+    assert beam_reason == "accepted" and beam_row is not None
+    assert beam_row["query_beam_audit"]["selected_index"] == 1
+    assert beam_row["query_beam_audit"]["selected_query"] == "Ada Example birthplace"
+    assert beam_row["query_beam_audit"]["attempts"][0]["reason"] == "teacher_over_depth"
     print("W3_MINIMAL_DEPTH_CAUSALITY_PASS")
 
 

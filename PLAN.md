@@ -915,11 +915,10 @@ by 50pp), so formal scale must reserve a disjoint strict-causal validation split
 training. This is evaluation hygiene, not a new method or a replacement for web-dev50.
 All N=400 Pilot questions are excluded from the fresh formal-scale mining pool.
 
-**NEXT — fresh formal scale:** Tool-only mine N=5000 from the remaining pool. At the
-observed strict yields (D1=13.5% and D2=12.0% of raw), this should support the frozen
-~1000 target with D1/D2 coverage. Build with unchanged prompts, gates and deterministic
-Teacher; before LoRA, freeze a disjoint causal validation split and train only on the
-remainder. `web-final50` stays unopened.
+**CLOSED — fresh formal scale by brute force:** do not mine N=5000. The later Bocha
+same-manifest controls show that raw candidate supply is not the limiting variable; strict
+D2 completion after one Q2 proposal is. Spending more Web calls on the same Hotpot×Bocha
+distribution would scale a low-yield mechanism rather than repair it.
 
 ### W3 provider migration — Bocha environment
 
@@ -951,11 +950,82 @@ zero duplicate/leak/invalid reference. The dominant rejection is Teacher over-de
 rates, N=5000 projects only ~375 D1 + ~150 D2, insufficient for the frozen ~1000 target;
 do not scale with this Teacher/environment pair.
 
-**NEXT — isolated Teacher comparison:** replay the exact same Bocha N=400 manifest and
-frozen Obs1 using DeepSeek-v4-flash, with unchanged prompts, T=0, seed, grounded gates and
-quotas, into a separate output namespace. Never mix Kimi and DeepSeek accepted rows. Only
-if the full same-manifest quantity gate passes may DeepSeek be frozen for N=5000 and the
-subsequent Bocha web-dev annotation. `web-final50` remains untouched.
+**DONE — isolated Teacher comparison:** DeepSeek-v4-flash replayed the exact same frozen
+Bocha manifest and produced 59 accepted (D1=50, D2=9). The subset causal audit passes
+completely, but the original quantity gate fails. Kimi produced D2=12 and DeepSeek D2=9;
+therefore Teacher capacity is not the root bottleneck. Never mix these accepted sets.
+
+### W3 recovery — action coverage, then task-source shift
+
+Keep frozen Search1/Obs1, Gold-hidden Teacher, grounded sufficiency, minimal-depth
+counterfactual, state conditioning, new-source/evidence and leakage gates unchanged.
+
+1. **W3-R1 one-time deterministic Q2 Beam=3:** replay exactly the existing 112 Bocha D2
+   candidates with DeepSeek. One post-Obs1 Teacher call returns three ordered, distinct,
+   state-conditioned Q2 proposals. Execute each against Bocha and let the unchanged
+   builder gate select the first valid branch. Record every proposal/rejection. This is
+   rejection sampling over actions, not a label relaxation. Compare strict D2 accepted
+   against the same-manifest single-Q2 baseline of 9. If the gain is small, stop: no
+   Beam=5, prompt tuning, or third Teacher.
+2. **W3-R2 WebShaper100 source test:** deterministically select 100 rows from the official
+   WebShaper release. Teacher/Web receive only `question`; `answer`, `formalization`, and
+   released URLs remain builder-side or are removed from runtime input. Run the same Bocha
+   frozen-Obs1 and causal builder gates. This tests whether information-seeking task design
+   raises strict D2 yield; it does not authorize training by itself.
+3. If neither R1 nor R2 yields adequate strict D2 coverage, move once to source-first
+   Bocha-native D2 synthesis (Source A → hidden bridge → Source B → answer → backward
+   question), then revalidate every synthesized item from zero with the same gates.
+
+No LoRA starts until the existing mixed hard gate passes on one provider/Teacher/source
+protocol. `web-final50` remains untouched throughout.
+
+**DONE — W3-R1 Beam=3:** exact replay of all 112 Bocha D2 candidates accepted 16 strict
+D2 trajectories versus the same-manifest single-Q2 DeepSeek baseline of 9. The 16-row
+subset passes every causal/memory/leakage audit, but the gain is far below the predeclared
+25–35 success region. Selected proposal ranks were 11/3/2 at rank 1/2/3; later proposals
+add only five successes. Close action-beam recovery: no Beam=5 or prompt/Teacher sweep.
+
+**DONE — W3-R2 WebShaper100:** deterministic official-source isolation passed (500 source
+rows, 100 selected, seed 42; formalization/URLs excluded from runtime and Gold builder-side
+only). Tool mining labeled D1=6/D2-candidate=94 under answer-absent policy, but unchanged
+causal construction accepted only 2/100 (D1=1, strict D2=1). Both accepted rows pass the
+subset audit; quantity fails decisively. Existing information-seeking questions therefore
+do not solve the Bocha evidence-structure mismatch.
+
+**ACTIVE — W3-R3 source-first smoke:** synthesize 12 Bocha-native two-source tasks from
+Source A → hidden bridge → independent Source B → short answer → backward question. Reject
+bridge/answer leakage, same-URL evidence, and ungrounded facts during synthesis. Then discard
+synthesis provenance from runtime and re-run every generated question from zero through
+fresh Bocha Search1 plus the unchanged minimal-depth Builder. Synthesis is candidate
+creation, never automatic D2 acceptance.
+
+**DONE — W3-R3 smoke v1 diagnostic:** synthesis produced 12/12 after 36 seeds, but fresh
+Tool mining split them D1=6/D2-candidate=6 and strict Builder accepted D1=4/D2=0. Audit
+correctly fails depth representation. Post-hoc inspection found that 2/6 alleged D2 rows
+did not recover the synthesized bridge in fresh Search1; `answer_absent` alone was therefore
+an over-broad candidate label. This does not change the strict Builder result or relax it.
+
+**ACTIVE — W3-R3 smoke v2:** move the missing source-first invariant into candidate creation:
+after backward question generation, perform a fresh question-based Bocha Search1 and accept
+only if the hidden bridge is explicit while the answer is absent. Freeze that exact Obs1 and
+run the unchanged Builder. Target six strict-D2 candidates; this is the final source-first
+protocol correction before deciding whether the production method is viable.
+
+**DONE — W3-R3 smoke v2 `W3_ACCEPTED_SUBSET_GATE_PASS`:** the bridge-visible /
+answer-absent invariant yielded 5 candidates from 120 discovery seeds (target 6 was not
+reached). The control runner now audits any nonempty incomplete subset instead of exiting
+before Builder validation. Strict Builder accepted 1/5 D2; two were rejected because the
+forced-one-search counterfactual was already sufficient and two for depth mismatch. The one
+accepted row has 100% forced1-insufficient/positive grounded delta, state-conditioned Q2,
+new source/evidence and memory replay, with zero duplicate/leak/invalid/oracle fields.
+
+Scientific conclusion: source-first makes strict D2 possible, but current end-to-end yield
+is only 1/120 discovery seeds (0.83%), far below production viability. Do not scale this
+generator or train LoRA from it. The W3 recovery tree is now empirically closed: Beam3
+improves action coverage modestly, WebShaper transfer fails, and naive source-first is
+causally valid but too sparse. Preserve all protocols/results for the report; any future
+data effort needs a materially different source graph/index construction, not more API
+sampling or relaxed gates.
 
 Every accepted trajectory exports both `trajectories.jsonl` for replay/audit and
 `decision_sft.jsonl` for step-level `state → SEARCH/ANSWER` CE. Previous raw observations

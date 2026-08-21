@@ -55,6 +55,15 @@ def parse_args() -> argparse.Namespace:
         "--provider", choices=("brave_llm_context", "bocha"), default="brave_llm_context"
     )
     p.add_argument(
+        "--candidate-policy",
+        choices=("support_bridge", "answer_absent"),
+        default="support_bridge",
+        help=(
+            "support_bridge requires benchmark supporting titles; answer_absent marks a "
+            "nonempty Search1 without the answer as a D2 candidate for strict downstream validation."
+        ),
+    )
+    p.add_argument(
         "--max-consecutive-web-errors",
         type=int,
         default=5,
@@ -95,13 +104,17 @@ def title_hits(text: str, titles: list[str]) -> list[str]:
     return [x for x in titles if title_norm(x) and title_norm(x) in hay]
 
 
-def classify_candidate(sample: dict[str, Any], docs: list[dict[str, Any]]) -> tuple[int, str]:
+def classify_candidate(
+    sample: dict[str, Any], docs: list[dict[str, Any]], candidate_policy: str = "support_bridge"
+) -> tuple[int, str]:
     text = "\n".join(f"{x.get('title') or ''}\n{x.get('text') or ''}" for x in docs)
     answers = [str(x) for x in sample.get("gold_answers") or []]
     titles = supporting_titles(sample)
     hits = title_hits(text, titles)
     if answer_visible(text, answers):
         return 1, "answer_visible_after_search1"
+    if candidate_policy == "answer_absent":
+        return 2, "answer_absent_after_search1"
     if titles and hits:
         return 2, "support_visible_answer_missing"
     return 0, "unresolved_or_no_bridge"
@@ -202,7 +215,7 @@ def main() -> None:
         elif any(_LEAK.search(x) for x in urls):
             label, reason = 0, "benchmark_leak"
         else:
-            label, reason = classify_candidate(sample, docs)
+            label, reason = classify_candidate(sample, docs, cfg.candidate_policy)
         reasons[reason] = reasons.get(reason, 0) + 1
         consecutive_web_errors = consecutive_web_errors + 1 if reason == "web_error" else 0
         frozen_docs = json.dumps(docs, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -271,6 +284,7 @@ def main() -> None:
         "excluded_id_count": len(excluded),
         "exclusion_sources": exclusion_sources,
         "search1_provenance_frozen": True,
+        "candidate_policy": cfg.candidate_policy,
     }
     (cfg.output_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2), flush=True)
