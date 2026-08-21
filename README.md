@@ -42,10 +42,15 @@ bash scripts/smoke_final.sh
 
 ```bash
 export BOCHA_API_KEY='your-key'
+export DEE_ASSISTANT_API_KEY='your-deepseek-compatible-key'
 bash scripts/start_final_stack.sh
 # 另一个终端
 python3 cli.py
 ```
+
+CLI 默认是 `hybrid`：DeepSeek 规划/综合 + Bocha 1–3 次检索，支持会话历史和
+`/multi` 多行问题；科研复现使用 `python3 cli.py --mode frozen`。Hybrid 指标不冒充
+GRPO@400 的 Controlled 指标。
 
 API 文档为 `http://127.0.0.1:8010/docs`。参见
 [部署与使用](docs/DEPLOYMENT.md)、[架构](docs/ARCHITECTURE.md)、

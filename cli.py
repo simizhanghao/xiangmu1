@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -34,13 +35,13 @@ MOCK_RESULT = {
 }
 
 
-def ask(api_url: str, question: str, api_key: str = "") -> dict:
+def ask(api_url: str, question: str, api_key: str = "", *, mode: str = "hybrid", history=None) -> dict:
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     request = Request(
         api_url.rstrip("/") + "/v1/research",
-        data=json.dumps({"question": question}).encode(),
+        data=json.dumps({"question": question, "mode": mode, "history": history or []}).encode(),
         headers=headers,
         method="POST",
     )
@@ -61,7 +62,8 @@ def render(result: dict) -> None:
     if evidence:
         print("\n[Evidence]")
         for index, item in enumerate(evidence, 1):
-            print(f"{index}. {item.get('text', '').strip()}")
+            text = re.sub(r"\[document_id=[^\]|]+\s*\|\s*title=([^\]|]+)[^\]]*\]", r"\1:", item.get("text", ""))
+            print(f"{index}. {text.strip()}")
     print("\n[Answer]")
     print(result.get("answer") or "(No final answer was produced.)")
     sources = result.get("sources") or []
@@ -73,7 +75,8 @@ def render(result: dict) -> None:
     warnings = result.get("warnings") or []
     print(
         f"\n[Run] searches={result.get('search_count', 0)} "
-        f"finished={result.get('finished')} latency={result.get('latency_ms')}ms"
+        f"success={result.get('answer_success', bool(result.get('answer')))} "
+        f"latency={result.get('latency_ms')}ms"
     )
     if warnings:
         print("[Warnings] " + "; ".join(warnings))
@@ -104,21 +107,31 @@ def main() -> None:
         help="run a cached offline demo without model, GPU, Web, or API keys",
     )
     parser.add_argument("--verbose", action="store_true", help="show trace and token details")
+    parser.add_argument("--mode", choices=("hybrid", "frozen"), default="hybrid")
     args = parser.parse_args()
+    history: list[dict[str, str]] = []
 
     def run(question: str) -> None:
-        result = dict(MOCK_RESULT) if args.mock else ask(args.api_url, question, args.api_key)
+        result = dict(MOCK_RESULT) if args.mock else ask(
+            args.api_url, question, args.api_key, mode=args.mode, history=history
+        )
         if args.json:
             print(json.dumps(result, ensure_ascii=False, indent=2))
         else:
             render(result)
             if args.verbose:
                 render_verbose(result)
+        if not args.mock:
+            history.extend([
+                {"role": "user", "content": question},
+                {"role": "assistant", "content": str(result.get("answer") or "")},
+            ])
+            del history[:-12]
 
     if args.question.strip():
         run(args.question.strip())
         return
-    print("Evidence-Aware DeepResearch Agent. Type /exit to quit.")
+    print(f"Evidence-Aware DeepResearch Agent ({args.mode}). /multi for multiline, /exit to quit.")
     while True:
         try:
             question = input("\n> ").strip()
@@ -127,6 +140,15 @@ def main() -> None:
             break
         if question.lower() in {"/exit", "/quit", "exit", "quit"}:
             break
+        if question == "/multi":
+            print("Paste multiple lines; submit with an empty line:")
+            lines = []
+            while True:
+                line = input("... ")
+                if not line:
+                    break
+                lines.append(line)
+            question = "\n".join(lines).strip()
         if not question:
             continue
         try:

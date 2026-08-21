@@ -26,6 +26,8 @@ _lock = asyncio.Semaphore(int(os.environ.get("DEE_MAX_CONCURRENCY", "1")))
 class ResearchRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     request_id: str | None = Field(default=None, max_length=128)
+    mode: str = Field(default="hybrid", pattern="^(hybrid|frozen)$")
+    history: list[dict[str, str]] = Field(default_factory=list, max_length=20)
 
 
 def get_service() -> ResearchService:
@@ -55,6 +57,7 @@ def health() -> dict:
         pass
     key_name = "BOCHA_API_KEY" if settings.web_provider == "bocha" else ""
     provider_ready = not key_name or bool(os.environ.get(key_name))
+    assistant_ready = bool(os.environ.get("DEE_ASSISTANT_API_KEY") or os.environ.get("TEACHER_API_KEY") or os.environ.get("DEEPSEEK_API_KEY"))
     return {
         "status": "ok" if upstream and provider_ready else "degraded",
         "vllm_ready": upstream,
@@ -64,6 +67,8 @@ def health() -> dict:
         "adaptive_controller": False,
         "memory_mode": "provenance_only",
         "policy_prompt_memory": False,
+        "default_mode": "hybrid",
+        "assistant_ready": assistant_ready,
     }
 
 
@@ -81,7 +86,9 @@ async def research(payload: ResearchRequest, authorization: str | None = Header(
     async with _lock:
         try:
             return await run_in_threadpool(
-                lambda: get_service().ask(payload.question, payload.request_id)
+                lambda: get_service().ask(
+                    payload.question, payload.request_id, mode=payload.mode, history=payload.history
+                )
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

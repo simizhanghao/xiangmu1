@@ -26,3 +26,9 @@ serving:
   api_host: 127.0.0.1
   api_port: 8010
   vllm_port: 18120
+
+interactive_product:
+  default_mode: hybrid
+  planner_and_synthesizer: deepseek-v4-flash
+  searches_per_research_question: 1-3
+  frozen_research_mode_available: true

@@ -29,7 +29,7 @@ from fastapi.testclient import TestClient
 import src.app.api as api
 
 class FakeService:
-    def ask(self, question, request_id=None):
+    def ask(self, question, request_id=None, **kwargs):
         return {
             "question": question, "answer": "offline", "evidence": [{"source_ids": ["S1"], "text": "cached"}],
             "sources": [{"id": "S1", "title": "cached", "url": "https://example.com"}],
@@ -45,6 +45,24 @@ assert r.status_code == 200 and r.json()['best_policy'] == 'GRPO@400'
 r=c.post('/v1/research', json={'question': 'offline API smoke'})
 assert r.status_code == 200 and r.json()['answer'] == 'offline'
 print('FASTAPI_PASS')
+PY
+
+run_py - <<'PY'
+from types import SimpleNamespace
+from src.app.service import ResearchService
+
+class FakeWeb:
+    def retrieve(self, sample, query, top_k):
+        return {"documents": [{"document_id": "d1", "title": "Official result", "text": "The requested rank is 12.", "metadata": {"url": "https://example.com/rank"}}], "errors": []}
+
+s = ResearchService.__new__(ResearchService)
+s.settings = SimpleNamespace(top_k=5, web_provider="mock", assistant_model="mock")
+s.web = FakeWeb()
+answers = iter(['{"needs_search":true,"direct_answer":"","queries":["precise query"]}', "The supported answer is 12 [S1]."])
+s._assistant_chat = lambda *args, **kwargs: next(answers)
+r = s.ask_hybrid("rank?", "offline", [])
+assert r["answer_success"] and r["search_count"] == 1 and r["sources"][0]["id"] == "S1"
+print("HYBRID_ORCHESTRATION_PASS")
 PY
 
 echo "FINAL_STACK_SMOKE_PASS"

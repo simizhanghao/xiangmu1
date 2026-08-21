@@ -20,6 +20,7 @@ bash scripts/smoke_final.sh
 ```bash
 cd /data1/hcc/deepresearch/Dee
 export BOCHA_API_KEY='your-bocha-key'
+export DEE_ASSISTANT_API_KEY='your-deepseek-compatible-key'
 bash scripts/start_final_stack.sh
 ```
 
@@ -39,6 +40,10 @@ tmux new-session -d -s dee_final \
 ```bash
 python3 cli.py
 ```
+
+Default `hybrid` mode uses DeepSeek for query planning/final synthesis and Bocha for
+1–3 searches. Use `/multi` to paste a multi-line request and submit with a blank line.
+The scientific frozen policy remains available as `python3 cli.py --mode frozen`.
 
 Or ask once:
 

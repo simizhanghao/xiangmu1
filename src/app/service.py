@@ -2,11 +2,15 @@
 from __future__ import annotations
 
 import os
+import json
+import re
 import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import requests
 
 from transformers import AutoTokenizer
 
@@ -36,6 +40,12 @@ class AppSettings:
     web_timeout: float = float(os.environ.get("DEE_WEB_TIMEOUT", "30"))
     web_retries: int = int(os.environ.get("DEE_WEB_RETRIES", "2"))
     web_context_tokens: int = int(os.environ.get("DEE_WEB_CONTEXT_TOKENS", "4096"))
+    assistant_base_url: str = os.environ.get(
+        "DEE_ASSISTANT_BASE_URL", os.environ.get("TEACHER_BASE_URL", "https://api.deepseek.com")
+    )
+    assistant_model: str = os.environ.get(
+        "DEE_ASSISTANT_MODEL", os.environ.get("TEACHER_MODEL", "deepseek-v4-flash")
+    )
 
 
 class ResearchService:
@@ -71,11 +81,113 @@ class ResearchService:
             memory_mode="none",
         )
 
-    def ask(self, question: str, request_id: str | None = None) -> dict[str, Any]:
+    def _assistant_chat(self, messages: list[dict[str, str]], *, json_mode: bool = False) -> str:
+        key = os.environ.get("DEE_ASSISTANT_API_KEY") or os.environ.get("TEACHER_API_KEY") or os.environ.get("DEEPSEEK_API_KEY")
+        if not key:
+            raise RuntimeError("hybrid mode requires DEE_ASSISTANT_API_KEY (or TEACHER_API_KEY)")
+        payload: dict[str, Any] = {
+            "model": self.settings.assistant_model,
+            "messages": messages,
+            "temperature": 0.1,
+            "max_tokens": 1200,
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        response = requests.post(
+            self.settings.assistant_base_url.rstrip("/") + "/chat/completions",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=(10, 180),
+        )
+        response.raise_for_status()
+        return str(response.json()["choices"][0]["message"]["content"]).strip()
+
+    @staticmethod
+    def _json_object(text: str) -> dict[str, Any]:
+        match = re.search(r"\{.*\}", text, re.S)
+        if not match:
+            raise RuntimeError("planner returned no JSON object")
+        return json.loads(match.group(0))
+
+    def ask_hybrid(self, question: str, request_id: str, history: list[dict[str, str]]) -> dict[str, Any]:
+        started = time.perf_counter()
+        history_text = "\n".join(
+            f"{x.get('role', 'user')}: {str(x.get('content', ''))[:800]}" for x in history[-6:]
+        ) or "(none)"
+        plan_text = self._assistant_chat([
+            {"role": "system", "content": (
+                "You are a research query planner. Resolve follow-ups using conversation history. "
+                "Return JSON only: {needs_search:boolean,direct_answer:string,queries:[string]}. "
+                "Use 1-3 precise queries, preserving requested year/entity/metric; prefer official sources. "
+                "For greetings or casual chat set needs_search=false and answer naturally."
+            )},
+            {"role": "user", "content": f"History:\n{history_text}\n\nCurrent request:\n{question}"},
+        ], json_mode=True)
+        plan = self._json_object(plan_text)
+        queries = [" ".join(str(q).split()) for q in plan.get("queries", []) if str(q).strip()][:3]
+        if not plan.get("needs_search", True):
+            return {
+                "request_id": request_id, "question": question,
+                "answer": str(plan.get("direct_answer") or "你好！有什么需要研究的问题吗？"),
+                "evidence": [], "sources": [], "search_queries": [], "search_count": 0,
+                "finished": True, "answer_success": True, "warnings": [],
+                "latency_ms": round((time.perf_counter() - started) * 1000, 2),
+                "policy": "Hybrid Assistant", "web_provider": self.settings.web_provider,
+                "adaptive_controller": False, "trace": {"queries": [], "search_count": 0},
+            }
+        documents: dict[str, dict[str, Any]] = {}
+        warnings: list[str] = []
+        for query in queries:
+            packed = self.web.retrieve({"sample_id": request_id}, query, self.settings.top_k)
+            warnings.extend(str(x.get("error") or x) for x in (packed.get("errors") or []))
+            for doc in packed.get("documents") or []:
+                documents.setdefault(str(doc.get("document_id")), doc)
+        sources = []
+        context = []
+        for index, doc in enumerate(list(documents.values())[:12], 1):
+            meta = doc.get("metadata") or {}
+            source = {
+                "id": f"S{index}", "title": str(doc.get("title") or ""),
+                "url": str(meta.get("url") or ""), "snippet": str(doc.get("text") or "")[:1200],
+            }
+            sources.append(source)
+            context.append(f"[{source['id']}] {source['title']}\nURL: {source['url']}\n{source['snippet']}")
+        if not sources:
+            answer = "没有检索到足够证据，暂时无法可靠回答。请稍后重试或补充更具体的年份、对象和榜单。"
+            success = False
+            warnings.append("web search returned no usable evidence")
+        else:
+            answer = self._assistant_chat([
+                {"role": "system", "content": (
+                    "You are a careful Chinese research assistant. Answer the exact question using only the "
+                    "provided sources. Preserve requested years and metrics. Cite factual claims as [S1]. "
+                    "If evidence is insufficient or conflicting, say so explicitly; never guess a rank or number."
+                )},
+                {"role": "user", "content": f"Question:\n{question}\n\nSources:\n" + "\n\n".join(context)},
+            ])
+            success = bool(answer.strip())
+        evidence = [{"source_ids": [s["id"]], "text": s["snippet"]} for s in sources]
+        return {
+            "request_id": request_id, "question": question, "answer": answer,
+            "evidence": evidence, "sources": sources, "search_queries": queries,
+            "search_count": len(queries), "finished": True, "answer_success": success,
+            "format_valid": True, "warnings": warnings,
+            "latency_ms": round((time.perf_counter() - started) * 1000, 2),
+            "policy": "Hybrid Assistant (DeepSeek planner/synthesizer + Bocha)",
+            "web_provider": self.settings.web_provider, "adaptive_controller": False,
+            "memory": {"mode": "conversation_and_provenance", "injected_into_grpo_prompt": False},
+            "trace": {"queries": queries, "search_count": len(queries)},
+        }
+
+    def ask(self, question: str, request_id: str | None = None, *, mode: str = "hybrid", history: list[dict[str, str]] | None = None) -> dict[str, Any]:
         question = " ".join(str(question).split()).strip()
         if not question:
             raise ValueError("question must be non-empty")
         request_id = request_id or str(uuid.uuid4())
+        if mode == "hybrid":
+            return self.ask_hybrid(question, request_id, history or [])
+        if mode != "frozen":
+            raise ValueError("mode must be hybrid or frozen")
         documents: dict[str, dict[str, Any]] = {}
 
         def tracked_retrieve(sample: dict[str, Any], query: str, top_k: int):
@@ -121,6 +233,9 @@ class ResearchService:
             )
         sources.sort(key=lambda item: (item["rank"] or 9999, item["id"]))
         cost = result.trace.cost_info
+        warnings = list(result.validation_errors)
+        if float(result.metrics.get("empty_retrieval_count") or 0) > 0:
+            warnings.append("web search returned no usable evidence")
         return {
             "request_id": request_id,
             "question": question,
@@ -130,8 +245,9 @@ class ResearchService:
             "search_queries": list(result.search_queries),
             "search_count": int(result.metrics.get("search_count") or 0),
             "finished": bool(result.finished),
+            "answer_success": bool(result.trace.final_answer and result.trace.final_answer != "[no answer]"),
             "format_valid": bool(result.metrics.get("format_valid")),
-            "warnings": list(result.validation_errors),
+            "warnings": warnings,
             "latency_ms": round((time.perf_counter() - started) * 1000.0, 2),
             "usage": {
                 "prompt_tokens": cost.prompt_tokens,

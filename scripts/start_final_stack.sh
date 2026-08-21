@@ -17,6 +17,9 @@ test -s "$MODEL/config.json" || { echo "MISSING_MODEL $MODEL"; exit 2; }
   echo "For an offline demo: python3 cli.py --mock"
   exit 2
 }
+if [[ -z "${DEE_ASSISTANT_API_KEY:-${TEACHER_API_KEY:-${DEEPSEEK_API_KEY:-}}}" ]]; then
+  echo "WARNING: no DeepSeek key; hybrid mode unavailable (frozen mode still works)."
+fi
 if [[ "$API_HOST" != "127.0.0.1" && "$API_HOST" != "localhost" && -z "${DEE_API_KEY:-}" ]]; then
   echo "REFUSING_PUBLIC_API_WITHOUT_DEE_API_KEY"
   exit 2
