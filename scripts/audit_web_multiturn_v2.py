@@ -40,10 +40,13 @@ def main() -> None:
     rows = load(a.run_dir / "trajectories.jsonl")
     decision_path = a.run_dir / "decision_sft.jsonl"
     share = load(decision_path if decision_path.exists() else a.run_dir / "sharegpt.jsonl")
+    balanced_path = a.run_dir / "decision_sft_balanced.jsonl"
+    balanced = load(balanced_path) if balanced_path.exists() else []
     parity = 0
     extra = duplicate = obs_conditioned = new_source = new_evidence = 0
     empty = leaks = invalid_evidence_refs = 0
     depth: dict[int, int] = {}
+    memory_token_values: list[int] = []
     d1_stop_correct = d2_forced1_insufficient = d2_positive_delta = 0
     d1_total = d2_total = causal_records = 0
     for row in rows:
@@ -72,6 +75,8 @@ def main() -> None:
             if serialize_research_memory(memory) != turn["memory_rendered"]:
                 raise SystemExit(f"MEMORY_PARITY_FAIL {row['sample_id']} turn={turn['search_turn']}")
             parity += 1
+            if "memory_tokens" in turn:
+                memory_token_values.append(int(turn["memory_tokens"]))
             prior_obs = "\n".join(str(x.get("text") or "") for x in docs)
         available_doc_ids = {
             str(doc.get("document_id") or "")
@@ -106,8 +111,18 @@ def main() -> None:
             )
     forbidden = sum(
         any(k in example for k in ("gold_answers", "supporting_facts", "contexts"))
-        for example in share
+        for example in share + balanced
     )
+    decision_distribution = {
+        kind: sum((x.get("metadata") or {}).get("decision_type") == kind for x in share)
+        for kind in ("initial_search", "post_obs_stop", "post_obs_continue")
+    }
+
+    def percentile(values: list[int], q: float) -> int | None:
+        if not values:
+            return None
+        ordered = sorted(values)
+        return ordered[round((len(ordered) - 1) * q)]
     summary_file = json.loads((a.run_dir / "summary.json").read_text())
     metrics = {
         "gate": "WEB_MEMORY_PROTOCOL_PARITY_PASS",
@@ -123,6 +138,10 @@ def main() -> None:
         "retained_leak_urls": leaks,
         "invalid_evidence_document_refs": invalid_evidence_refs,
         "training_examples_with_oracle_fields": forbidden,
+        "decision_distribution": decision_distribution,
+        "balanced_decision_examples": len(balanced),
+        "memory_tokens_p50": percentile(memory_token_values, 0.50),
+        "memory_tokens_p95": percentile(memory_token_values, 0.95),
         "minimal_depth_audit_coverage": causal_records / max(1, len(rows)),
         "depth1_stop_correct_rate": d1_stop_correct / d1_total if d1_total else None,
         "depth2_forced1_insufficient_rate": d2_forced1_insufficient / d2_total if d2_total else None,

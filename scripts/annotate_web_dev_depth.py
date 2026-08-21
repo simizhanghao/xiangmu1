@@ -8,6 +8,7 @@ inside build_one's deterministic acceptance checks.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -34,7 +35,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--teacher-timeout", type=float, default=180.0)
     p.add_argument("--web-timeout", type=float, default=30.0)
     p.add_argument("--web-retries", type=int, default=2)
+    p.add_argument(
+        "--web-provider", choices=("brave_llm_context", "bocha"), default="brave_llm_context"
+    )
     p.add_argument("--top-k", type=int, default=5)
+    p.add_argument("--tokenizer-path", type=Path, default=ROOT / "model")
     return p.parse_args()
 
 
@@ -45,8 +50,13 @@ def main() -> None:
     cfg.teacher_temperature = 0.0
     cfg.teacher_seed = 42
     cfg.diagnostic_log = None
+    from transformers import AutoTokenizer
+
+    cfg.memory_tokenizer = AutoTokenizer.from_pretrained(
+        str(args.tokenizer_path), trust_remote_code=True
+    )
     web = WebAdapter(
-        provider="brave_llm_context",
+        provider=args.web_provider,
         cache_dir=args.output_dir / "web_cache",
         timeout_s=args.web_timeout,
         retries=args.web_retries,
@@ -55,22 +65,52 @@ def main() -> None:
     annotations: list[dict] = []
     reasons: dict[str, int] = {}
     for index, sample in enumerate(load_jsonl(str(args.pool))[: args.max_samples], 1):
-        row1, reason1 = build_one(sample, 1, cfg, web)
+        query1 = str(sample["question"])
+        packed = web.retrieve(sample, query1, args.top_k)
+        search1_documents = list(packed.get("documents") or [])
+        search1_ok = not packed.get("errors") and bool(search1_documents)
+        if not search1_ok:
+            row1, reason1 = None, "search1_web_error_or_empty"
+        else:
+            row1, reason1 = build_one(
+                sample,
+                1,
+                cfg,
+                web,
+                initial_query=query1,
+                initial_documents=search1_documents,
+            )
         if row1 is not None:
             label, row, reason = 1, row1, "depth1_causal_pass"
         else:
-            row2, reason2 = build_one(sample, 2, cfg, web)
+            if search1_ok:
+                row2, reason2 = build_one(
+                    sample,
+                    2,
+                    cfg,
+                    web,
+                    initial_query=query1,
+                    initial_documents=search1_documents,
+                )
+            else:
+                row2, reason2 = None, "search1_web_error_or_empty"
             if row2 is not None:
                 label, row, reason = 2, row2, "depth2_causal_pass"
             else:
                 label, row, reason = 0, None, f"unresolved:d1={reason1};d2={reason2}"
         reasons[reason] = reasons.get(reason, 0) + 1
+        frozen_docs = json.dumps(
+            search1_documents, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
         annotations.append(
             {
                 "sample_id": sample["sample_id"],
                 "minimal_depth": label,
                 "missing_after_search1": (row or {}).get("missing_after_search1") or [],
                 "annotation_reason": reason,
+                "search1_query": query1,
+                "search1_obs_sha256": hashlib.sha256(frozen_docs.encode("utf-8")).hexdigest(),
+                "search1_source_ids": [str(x.get("document_id") or "") for x in search1_documents],
                 "gold_visible_to_teacher_or_web": False,
             }
         )

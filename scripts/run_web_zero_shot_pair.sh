@@ -19,6 +19,10 @@ if [[ "$PROVIDER" == brave* && -z "${BRAVE_SEARCH_API_KEY:-}" ]]; then
   echo "WEB_PROVIDER_BLOCKED missing BRAVE_SEARCH_API_KEY"
   exit 2
 fi
+if [[ "$PROVIDER" == bocha && -z "${BOCHA_API_KEY:-}" ]]; then
+  echo "WEB_PROVIDER_BLOCKED missing BOCHA_API_KEY"
+  exit 2
+fi
 if [[ "$PROVIDER" == searxng && -z "${SEARXNG_URL:-}" ]]; then
   echo "WEB_PROVIDER_BLOCKED missing SEARXNG_URL"
   exit 2

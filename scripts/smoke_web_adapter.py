@@ -20,7 +20,7 @@ def main() -> None:
     parser.add_argument("--query", default="Who developed the theory of relativity?")
     parser.add_argument(
         "--provider",
-        choices=("duckduckgo", "brave", "brave_llm_context", "searxng"),
+        choices=("duckduckgo", "brave", "brave_llm_context", "bocha", "searxng"),
         default="duckduckgo",
     )
     parser.add_argument("--top-k", type=int, default=5)

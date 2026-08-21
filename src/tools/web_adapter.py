@@ -234,6 +234,55 @@ class WebAdapter:
             )
         return out
 
+    def _bocha_context(self, query: str, top_k: int) -> list[dict[str, Any]]:
+        """Return Bocha Web Search summaries in the context-provider shape."""
+        key = os.environ.get("BOCHA_API_KEY", "")
+        if not key:
+            raise RuntimeError("BOCHA_API_KEY is required")
+        response = self.session.post(
+            "https://api.bochaai.com/v1/web-search",
+            json={
+                "query": " ".join(str(query).split()[:50])[:400],
+                "summary": True,
+                "count": max(5, top_k),
+            },
+            headers={
+                "Authorization": f"Bearer {key}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+            timeout=self.request_timeout,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        # Current responses expose webPages directly; tolerate an optional data
+        # envelope used by some Bocha SDK examples.
+        body = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+        values = ((body.get("webPages") or {}).get("value") or [])
+        out = []
+        for item in values[:top_k]:
+            url = str(item.get("url") or "")
+            snippets = []
+            for value in (item.get("summary"), item.get("snippet")):
+                cleaned = _clean_context_snippet(value)
+                if cleaned and cleaned not in snippets:
+                    snippets.append(cleaned)
+            if not url or not snippets:
+                continue
+            out.append(
+                {
+                    "title": str(item.get("name") or item.get("title") or url),
+                    "url": url,
+                    "snippets": snippets,
+                    "source_metadata": {
+                        "id": item.get("id"),
+                        "site_name": item.get("siteName"),
+                        "date_published": item.get("datePublished"),
+                    },
+                }
+            )
+        return out
+
     def _fetch_text(self, url: str) -> tuple[str, dict[str, Any]]:
         started = time.perf_counter()
         if not _public_http_url(url):
@@ -284,9 +333,13 @@ class WebAdapter:
         del sample
         tool_started = time.perf_counter()
         search_started = time.perf_counter()
-        if self.provider == "brave_llm_context":
+        if self.provider in {"brave_llm_context", "bocha"}:
             try:
-                raw_contexts = self._brave_llm_context(query, top_k)
+                raw_contexts = (
+                    self._brave_llm_context(query, top_k)
+                    if self.provider == "brave_llm_context"
+                    else self._bocha_context(query, top_k)
+                )
             except requests.RequestException as exc:
                 search_ms = (time.perf_counter() - search_started) * 1000.0
                 return self._failed_search(query, top_k, exc, search_ms)

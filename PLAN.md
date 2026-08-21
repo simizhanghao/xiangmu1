@@ -868,6 +868,95 @@ answer mismatch 1, teacher over-depth 1, depth mismatch 1. Combined with the ear
 STOP 2/2, both causal classes are now feasible. Next: medium Tool-only mining before the
 n=120 mixed pilot; still no LoRA.
 
+### W3 formal data engineering — frozen after `e97db2b`
+
+No more protocol/prompt/gate smoke loops. Unique path:
+
+```text
+N=400 Tool-only mining → one yield table → mixed n=120 causal Pilot
+→ freeze web-dev50 hidden depth → scale ~1000 accepted
+→ balanced decision SFT → GRPO@400 WebMT LoRA 1 epoch → dev50 → final50 once
+```
+
+N=400 mining must exclude web-dev50, web-final50, both W2 n=40 traces, every current
+eval/sealed JSONL, and builder-development smoke IDs. Each candidate freezes exact Obs1
+documents plus question/query/provider/top-k/context budget/leak-filter version/Obs1 SHA256/
+source IDs/URLs/timestamp. Trajectory construction replays those bytes; it never refreshes
+Search1. If strict D2 count is short, expand raw pool to 800 only—never relax a gate.
+
+The mixed Pilot target remains D1=54/D2=66; hard pass remains accepted>=100 with D1>=20
+and D2>=20. Report candidate/strict yields, raw→strict D2, `initial_search`,
+`post_obs_stop`, `post_obs_continue`, and memory-token p50/p95. Full trajectories are audit
+artifacts. First LoRA input is `decision_sft_balanced.jsonl`: deterministic near-1:1
+post-Obs STOP/CONTINUE sampling with initial-search count capped to the same class count.
+web-final50 remains unopened until method/model/evaluator freeze.
+
+**DONE — N=400 Tool-only mining `W3_DEPTH_MINING_PASS`:** D1 candidate 243
+(60.75%), D2 candidate 120 (30.00%), unresolved 30 (7.50%), Web error 7 (1.75%);
+usable yield 90.75%. All 400 selected IDs are disjoint from the 1,798-ID exclusion union,
+and Search1 provenance/documents are frozen. Compared with n=20, D1 is stable (60→60.75%)
+and D2 drops only 35→30%, so scale yield is healthy. With observed strict D2 acceptance
+4/7, expected strict D2 is ~69; proceed directly to the single mixed n=120 causal Pilot.
+
+**DONE — mixed causal Pilot `W3_DATA_GATE_PASS`:** builder target 120 was intentionally
+not reached (exit 1), but the frozen hard gate passes with **102 accepted**, D1=54 and
+D2=48. There are 252 decision examples; balanced training view=144 with
+initial/STOP/CONTINUE=48/48/48. Duplicate=0, state-conditioned/new-source/new-evidence
+all 100%, memory replay 150/150, leaks/empty/invalid refs/oracle fields=0, D1 STOP and D2
+grounded causality all 100%. Memory tokens p50=754, p95=1277 are recorded diagnostics,
+not a new gate. Next: freeze evaluator-only web-dev50 D1/D2/unresolved labels using one
+immutable Search1/Obs1 per item. web-final50 remains untouched.
+
+**DONE — frozen natural web-dev50 annotation `WEB_DEV_DEPTH_ANNOTATION_PASS`:** D1=22,
+D2=2, unresolved=26; every item reuses one immutable Search1/Obs1 and gold is invisible
+to Teacher/Web. The set remains the external natural-distribution dev and is not relabeled
+or replaced. D2=2 is too small for a stable `CONTINUE@D2` estimate (one error changes it
+by 50pp), so formal scale must reserve a disjoint strict-causal validation split before
+training. This is evaluation hygiene, not a new method or a replacement for web-dev50.
+All N=400 Pilot questions are excluded from the fresh formal-scale mining pool.
+
+**NEXT — fresh formal scale:** Tool-only mine N=5000 from the remaining pool. At the
+observed strict yields (D1=13.5% and D2=12.0% of raw), this should support the frozen
+~1000 target with D1/D2 coverage. Build with unchanged prompts, gates and deterministic
+Teacher; before LoRA, freeze a disjoint causal validation split and train only on the
+remainder. `web-final50` stays unopened.
+
+### W3 provider migration — Bocha environment
+
+Brave became externally unavailable, so only the WebAdapter backend moved to Bocha;
+GRPO@400, action grammar, ResearchMemory, Teacher, causal gates and decision-SFT schema
+remain frozen. Brave observations and labels remain historical artifacts and are never
+mixed with Bocha data. Bocha is `summary=true`, top-k=5, provider-namespaced output, and
+uses a 1.05-second request-start interval.
+
+**DONE — Bocha Tool gate:** smoke returned 5/5 documents in 319ms. Fixed n=20 had zero
+errors, nonempty=100%, mean=142ms, Answer-string hit=20%, supporting-title recall=27.5%
+and ~399 context tokens. Top-k=10 doubled context without improving either recall metric,
+so top-k=5 remains frozen.
+
+**DONE — Bocha N=400 mining `W3_DEPTH_MINING_PASS`:** D0=180, D1=108, D2=112,
+usable=55%, with no Web errors, empty observations, provider/hash mismatch, or benchmark
+leak match. Relative to Brave, total usable yield is lower, but D2 supply is nearly stable
+(112 vs 120) and D1 supply remains sufficient. Next is one provider-specific mixed n=120
+causal Pilot; only after its strict gate passes may Bocha scale to N=5000. web-dev50 depth
+annotations must then be regenerated under frozen Bocha observations; web-final50 remains
+untouched.
+
+**DONE — Bocha + Kimi mixed Pilot:** builder remained incomplete at 42/120 after all
+220 candidates (D1=30/108, D2=12/112), so the original quantity gate (accepted>=100,
+D1>=20, D2>=20) FAILS. The accepted subset itself passes every causal audit: D1 STOP,
+D2 forced1 insufficiency/positive delta, state-conditioned Query2, new source/evidence,
+zero duplicate/leak/invalid reference. The dominant rejection is Teacher over-depth
+(118), followed by forced1 already correct (32) and answer mismatch (17). At these strict
+rates, N=5000 projects only ~375 D1 + ~150 D2, insufficient for the frozen ~1000 target;
+do not scale with this Teacher/environment pair.
+
+**NEXT — isolated Teacher comparison:** replay the exact same Bocha N=400 manifest and
+frozen Obs1 using DeepSeek-v4-flash, with unchanged prompts, T=0, seed, grounded gates and
+quotas, into a separate output namespace. Never mix Kimi and DeepSeek accepted rows. Only
+if the full same-manifest quantity gate passes may DeepSeek be frozen for N=5000 and the
+subsequent Bocha web-dev annotation. `web-final50` remains untouched.
+
 Every accepted trajectory exports both `trajectories.jsonl` for replay/audit and
 `decision_sft.jsonl` for step-level `state → SEARCH/ANSWER` CE. Previous raw observations
 are compressed into the shared ResearchMemory; only the latest Tool observation remains

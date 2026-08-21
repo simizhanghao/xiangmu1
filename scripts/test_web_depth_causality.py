@@ -32,6 +32,11 @@ class FakeWeb:
         }
 
 
+class FakeTokenizer:
+    def encode(self, text, add_special_tokens=False):
+        return text.split()
+
+
 def fake_teacher(cfg, payload):
     instruction = str(payload.get("instruction") or "")
     observation = str(payload.get("latest_observation") or "")
@@ -52,7 +57,7 @@ def main() -> None:
     row, reason = builder.build_one(
         sample,
         2,
-        SimpleNamespace(top_k=5),
+        SimpleNamespace(top_k=5, memory_tokenizer=FakeTokenizer()),
         FakeWeb(),
         initial_query=sample["question"],
         initial_documents=FakeWeb().retrieve(sample, sample["question"], 5)["documents"],

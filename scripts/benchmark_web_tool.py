@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tool-only A/B: Brave SERP+local fetch vs Brave LLM Context."""
+"""Tool-only comparison across normalized WebAdapter providers."""
 
 from __future__ import annotations
 
@@ -74,6 +74,12 @@ def main() -> None:
     parser.add_argument("--context-timeout", type=float, default=30.0)
     parser.add_argument("--context-retries", type=int, default=2)
     parser.add_argument("--context-tokens", type=int, default=4096)
+    parser.add_argument(
+        "--providers",
+        nargs="+",
+        choices=("brave", "brave_llm_context", "bocha"),
+        default=("brave", "brave_llm_context"),
+    )
     parser.add_argument("--output", default="results/55_web_infra/tool_ab.json")
     args = parser.parse_args()
 
@@ -81,21 +87,29 @@ def main() -> None:
     if not eval_path.is_absolute():
         eval_path = ROOT / eval_path
     samples = load_jsonl(eval_path)[: args.max_queries]
-    adapters = {
-        "brave_local_fetch": WebAdapter(
+    available = {
+        "brave": lambda: WebAdapter(
             provider="brave",
             cache_dir=ROOT / "results/55_web_infra/cache_local",
             timeout_s=args.raw_timeout,
             retries=args.raw_retries,
         ),
-        "brave_llm_context": WebAdapter(
+        "brave_llm_context": lambda: WebAdapter(
             provider="brave_llm_context",
             cache_dir=ROOT / "results/55_web_infra/cache_context",
             timeout_s=args.context_timeout,
             retries=args.context_retries,
             llm_context_tokens=args.context_tokens,
         ),
+        "bocha": lambda: WebAdapter(
+            provider="bocha",
+            cache_dir=ROOT / "results/55_web_infra/cache_bocha",
+            timeout_s=args.context_timeout,
+            retries=args.context_retries,
+            llm_context_tokens=args.context_tokens,
+        ),
     }
+    adapters = {name: available[name]() for name in args.providers}
     details: dict[str, list[dict[str, Any]]] = {name: [] for name in adapters}
     for index, sample in enumerate(samples, 1):
         query = sample["question"]
@@ -132,7 +146,7 @@ def main() -> None:
                 f"tool_ms={timing.get('tool_total_ms', 0)} errors={len(row['errors'])}",
                 flush=True,
             )
-            # Brave documents a 1-second sliding-window rate limit.
+            # Keep provider calls serialized and avoid burst-rate artifacts.
             remaining = 1.05 - (time.monotonic() - call_started)
             if remaining > 0:
                 time.sleep(remaining)

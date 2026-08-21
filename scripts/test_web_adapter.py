@@ -29,6 +29,20 @@ def main() -> None:
     assert out["timing"]["fetch_total_ms"] == 0.0
     assert out["timing"]["success_urls"] == 1
 
+    bocha = WebAdapter(provider="bocha", cache_dir="/tmp/dee_web_bocha_test")
+    bocha._bocha_context = lambda query, top_k: [  # type: ignore[method-assign]
+        {
+            "title": "Grace Example",
+            "url": "https://example.org/grace",
+            "snippets": ["Grace Example designed an early compiler."],
+            "source_metadata": {"site_name": "Example"},
+        }
+    ]
+    bocha_out = bocha.retrieve({}, "Who designed an early compiler?", 5)
+    assert bocha_out["documents"][0]["metadata"]["source"] == "bocha"
+    assert bocha_out["documents"][0]["metadata"]["url"] == "https://example.org/grace"
+    assert bocha_out["timing"]["fetch_total_ms"] == 0.0
+
     failed = WebAdapter(provider="duckduckgo", cache_dir="/tmp/dee_web_failure_test")
 
     def timeout(query: str, count: int):

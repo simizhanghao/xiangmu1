@@ -65,7 +65,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--retriever-scope", choices=("candidate", "web"), default="candidate")
     p.add_argument(
         "--web-provider",
-        choices=("duckduckgo", "brave", "brave_llm_context", "searxng"),
+        choices=("duckduckgo", "brave", "brave_llm_context", "bocha", "searxng"),
         default="duckduckgo",
     )
     p.add_argument("--web-timeout", type=float, default=45.0)

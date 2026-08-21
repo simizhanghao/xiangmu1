@@ -75,7 +75,11 @@ def args() -> argparse.Namespace:
     )
     p.add_argument("--web-timeout", type=float, default=30.0)
     p.add_argument("--web-retries", type=int, default=2)
+    p.add_argument(
+        "--web-provider", choices=("brave_llm_context", "bocha"), default="brave_llm_context"
+    )
     p.add_argument("--top-k", type=int, default=5)
+    p.add_argument("--tokenizer-path", type=Path, default=ROOT / "model")
     p.add_argument("--max-depth", type=int, default=3)
     p.add_argument("--smoke", action="store_true", help="Build target=6 with quotas 2/2/2.")
     p.add_argument("--quota-depth1", type=int)
@@ -327,13 +331,24 @@ def build_decision_example(
         obs = observations[i] if i == target_index - 1 else "[Earlier raw observation compressed into Research Memory.]"
         conv.append({"from": "observation", "value": obs})
     conv.append({"from": "gpt", "value": actions[target_index]})
+    target_action = actions[target_index]
+    if target_index == 0:
+        decision_type = "initial_search"
+    elif "<search>" in target_action:
+        decision_type = "post_obs_continue"
+    else:
+        decision_type = "post_obs_stop"
     return {
         "conversations": conv,
         "system": WEB_MULTITURN_V2_SYSTEM_PROMPT,
         "sft_id": f"{sample_id}__webmt_v2_decision_{target_index}",
         "sample_id": sample_id,
         "category": "web_multiturn_v2",
-        "metadata": {"decision_index": target_index, "observation_role": "sharegpt_observation"},
+        "metadata": {
+            "decision_index": target_index,
+            "decision_type": decision_type,
+            "observation_role": "sharegpt_observation",
+        },
     }
 
 
@@ -499,6 +514,7 @@ def build_one(
             return None, "no_new_information"
         raw = format_observation_text(docs)
         rendered = serialize_research_memory(memory)
+        memory_tokens = len(cfg.memory_tokenizer.encode(rendered, add_special_tokens=False))
         observation = f"{raw}\n\n{rendered}"
         observations.append(observation)
         previous_observation = raw
@@ -534,6 +550,7 @@ def build_one(
                 "new_evidence": len(memory.evidence) - before_evidence,
                 "query_conditioning": conditioning,
                 "missing_at_decision": list(decision["missing"]),
+                "memory_tokens": memory_tokens,
             }
         )
     return None, "no_final_answer"
@@ -541,6 +558,11 @@ def build_one(
 
 def main() -> None:
     cfg = args()
+    from transformers import AutoTokenizer
+
+    cfg.memory_tokenizer = AutoTokenizer.from_pretrained(
+        str(cfg.tokenizer_path), trust_remote_code=True
+    )
     if cfg.smoke:
         cfg.target = 6
         cfg.max_candidates = min(cfg.max_candidates, 60)
@@ -593,7 +615,7 @@ def main() -> None:
     accepted: list[dict[str, Any]] = []
     reasons: dict[str, int] = {}
     web = WebAdapter(
-        provider="brave_llm_context",
+        provider=cfg.web_provider,
         cache_dir=cfg.output_dir / "web_cache",
         timeout_s=cfg.web_timeout,
         retries=cfg.web_retries,
@@ -632,19 +654,44 @@ def main() -> None:
     examples = [e for row in accepted for e in row["decision_examples"]]
     write_jsonl(cfg.output_dir / "sharegpt.jsonl", examples)
     write_jsonl(cfg.output_dir / "decision_sft.jsonl", examples)
+    by_decision = {
+        kind: [x for x in examples if (x.get("metadata") or {}).get("decision_type") == kind]
+        for kind in ("initial_search", "post_obs_stop", "post_obs_continue")
+    }
+    balanced_n = min(len(by_decision["post_obs_stop"]), len(by_decision["post_obs_continue"]))
+    balanced_examples: list[dict[str, Any]] = []
+    if balanced_n:
+        for kind in ("initial_search", "post_obs_stop", "post_obs_continue"):
+            ordered = sorted(
+                by_decision[kind],
+                key=lambda x: hashlib.sha256(f"{cfg.seed}:{x['sft_id']}".encode()).hexdigest(),
+            )
+            balanced_examples.extend(ordered[:balanced_n])
+    write_jsonl(cfg.output_dir / "decision_sft_balanced.jsonl", balanced_examples)
+    memory_tokens = [int(t["memory_tokens"]) for row in accepted for t in row["turns"]]
+
+    def percentile(values: list[int], q: float) -> int | None:
+        if not values:
+            return None
+        ordered = sorted(values)
+        return ordered[round((len(ordered) - 1) * q)]
     counts = {str(d): sum(x["actual_depth"] == d for x in accepted) for d in (1, 2, 3)}
     summary = {
         "gate": "W3_PILOT_BUILT" if len(accepted) == cfg.target else "W3_PILOT_INCOMPLETE",
         "target": cfg.target,
         "accepted": len(accepted),
         "decision_examples": len(examples),
+        "decision_distribution": {k: len(v) for k, v in by_decision.items()},
+        "balanced_decision_examples": len(balanced_examples),
+        "memory_tokens_p50": percentile(memory_tokens, 0.50),
+        "memory_tokens_p95": percentile(memory_tokens, 0.95),
         "depth_counts": counts,
         "quotas": {str(k): v for k, v in quotas.items()},
         "attempted": attempt,
         "rejection_reasons": reasons,
         "teacher_model": cfg.teacher_model,
         "teacher_gold_visible": False,
-        "web_provider": "brave_llm_context",
+        "web_provider": cfg.web_provider,
         "candidate_manifest": str(cfg.candidate_manifest) if cfg.candidate_manifest else None,
         "minimal_depth_counterfactual": True,
     }
