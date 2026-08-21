@@ -1,0 +1,10 @@
+model_name_or_path: /data1/hcc/deepresearch/Dee/results/44_hf_formal_grpo_step400/model_view
+adapter_name_or_path: /data1/hcc/deepresearch/Dee/outputs/61_webmt_lora_v1
+template: qwen3_nothink
+trust_remote_code: true
+finetuning_type: lora
+
+export_dir: /data1/hcc/deepresearch/Dee/outputs/62_webmt_lora_v1_merged
+export_size: 5
+export_device: auto
+export_legacy_format: false

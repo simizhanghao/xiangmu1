@@ -1,0 +1,57 @@
+### W3-Final-SFT-v1: narrow post-observation decision adaptation from GRPO@400.
+
+### model
+model_name_or_path: /data1/hcc/deepresearch/Dee/results/44_hf_formal_grpo_step400/model_view
+trust_remote_code: true
+flash_attn: fa2
+
+### method
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_rank: 16
+lora_alpha: 32
+lora_target: all
+deepspeed: /data1/hcc/LlamaFactory/examples/deepspeed/ds_z2_config.json
+
+### dataset
+dataset_dir: /data1/hcc/deepresearch/Dee/results/61_webmt_lora/dataset
+dataset: w3_final_train
+eval_dataset: w3_behavior_dev40
+template: qwen3_nothink
+enable_thinking: false
+cutoff_len: 6144
+train_on_prompt: false
+mask_history: true
+overwrite_cache: true
+preprocessing_num_workers: 16
+dataloader_num_workers: 8
+
+### output
+output_dir: /data1/hcc/deepresearch/Dee/outputs/61_webmt_lora_v1
+logging_steps: 1
+save_steps: 10
+save_total_limit: 2
+plot_loss: true
+overwrite_output_dir: false
+save_only_model: false
+report_to: tensorboard
+
+### train
+per_device_train_batch_size: 4
+gradient_accumulation_steps: 2
+optim: adamw_torch_fused
+learning_rate: 5.0e-5
+num_train_epochs: 1.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.05
+bf16: true
+gradient_checkpointing: true
+ddp_timeout: 180000000
+seed: 42
+resume_from_checkpoint: null
+
+### eval
+per_device_eval_batch_size: 1
+eval_strategy: steps
+eval_steps: 10

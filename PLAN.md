@@ -1027,6 +1027,65 @@ causally valid but too sparse. Preserve all protocols/results for the report; an
 data effort needs a materially different source graph/index construction, not more API
 sampling or relaxed gates.
 
+### W3-R4 — Provider-Decoupled Causal Curriculum
+
+Bocha is now evaluation-only; live strict-D2 mining is permanently closed. Training states
+come from train-only explicit supporting graphs while preserving the exact ResearchMemory,
+observation serializer and `<search>/<answer>` action contract. Builder oracle metadata may
+choose supporting documents/bridge/answer, but decision-SFT inputs contain none of those
+fields beyond ordinary Tool responses.
+
+Execution is sequential and frozen:
+
+1. Graph-replay smoke: Hotpot train supporting pair, 8 D1 + 8 D2, five-document noisy
+   observations, bridge-visible/answer-hidden Obs1, answer-visible/new-source Obs2. Run
+   memory/leakage/decision audit before scaling.
+2. If smoke passes, deterministically freeze disjoint `behavior-dev40` (20 D1/20 D2), then
+   build train D1=220/D2=220 excluding behavior dev and every existing eval/sealed ID.
+3. Mix audited live causal rows with graph replay using explicit `origin`; train only the
+   near-balanced decision view, with STOP:CONTINUE≈1:1 and capped initial-search examples.
+4. One assistant-only, observation-masked LoRA epoch from GRPO@400. No reward/RL changes.
+
+Behavior gates stay frozen: STOP@D1>=70%, CONTINUE@D2>=60%, duplicate Q2<=25%,
+Obs-conditioned Q2>=60%, finish>=95%, and controlled/natural Answer-F1 regression<=2pp.
+No production dataset or LoRA starts until graph-replay smoke passes.
+
+**DONE — graph-replay smoke:** 8 D1 + 8 D2 compiled into 40 decision examples and 24
+balanced decisions. All 24 Memory states replay exactly; D1 STOP, D2 forced1 insufficiency,
+positive grounded delta, state-conditioned Q2 and new source/evidence are 100%, with zero
+duplicate/leak/invalid/oracle fields. The provider-decoupled contract is viable.
+
+**DONE — frozen replay data:** disjoint behavior-dev40 has D1=20/D2=20 and 60 balanced
+decisions. Train replay has D1=220/D2=220, excludes behavior dev, every existing eval/sealed
+ID and all accepted live-source questions, and passes `W3_DATA_GATE_PASS` over 660 states.
+Final mix deduplicates audited live rows and contains 611 trajectories (D1=324/D2=287),
+1,509 decisions and 861 balanced decisions. Balanced origin share is 645 graph / 216 live
+(25.1% live), with all causal and protocol audits at 100%.
+
+**DONE — W3-Final-SFT-v1 diagnostic:** 861 rows, global batch 32, one epoch = 27 optimizer
+steps; runtime 299.5s, train loss 0.1923 and eval loss 0.1124. Corrected behavior parsing
+(routing decision is scored before a long evidence payload finishes) gives GRPO@400
+STOP@D1=80% / CONTINUE@D2=5%, while v1 gives 75% / 15%. Thus v1 preserves the D1 gate
+and improves D2 by 10pp, but fails the frozen 60% D2 gate; do not run natural Web-dev.
+
+**ACTIVE — single W3 token-balance repair:** row counts were nominally 1:1:1, but target
+character mass was initial=14.3%, STOP=67.9%, CONTINUE=17.7%; full evidence/answer targets
+therefore drowned the decision signal. Restart once from GRPO@400 with CONTINUE repeated
+4x, producing post-Obs target mass STOP=467,214 vs CONTINUE=488,144 characters. Protocol,
+model, LoRA, LR, epoch count and behavior-dev40 stay frozen. This is the only authorized
+repair; rerun the same behavior gate before any natural Web evaluation.
+
+**DONE — W3 token-balance repair, final FAIL:** 1,722 rows and 54 optimizer steps completed
+in 505.3s; train loss=0.2009 and held behavior-state eval loss fell monotonically
+0.1073→0.0766→0.0737. Relative to v1, CONTINUE@D2 rose 15%→25% and duplicate Q2 fell
+10%→0%; every generated Q2 was observation-conditioned. But STOP@D1 fell 75%→65%, so
+both frozen routing gates cannot be satisfied together. The 192-token diagnostic also
+truncated 9/40 generations before an action, making its raw finish=77.5% unsuitable as an
+end-to-end finish estimate; even treating both truncated D2 cases as SEARCH gives at most
+35% CONTINUE, still far below 60%. Therefore the scientific decision is unchanged:
+`WEBMT_BEHAVIOR_FAIL`, no natural Web-dev50, no third tuning round, and GRPO@400 remains
+the deployable frozen policy. W3 training is closed as a documented negative result.
+
 Every accepted trajectory exports both `trajectories.jsonl` for replay/audit and
 `decision_sft.jsonl` for step-level `state → SEARCH/ANSWER` CE. Previous raw observations
 are compressed into the shared ResearchMemory; only the latest Tool observation remains
