@@ -1,37 +1,20 @@
-# Evidence-Aware Deep Research Agent — Qwen3-8B
+# Evidence-Aware DeepResearch Agent — Qwen3-8B / GRPO
 
-冻结总计划（唯一执行线）：[PLAN.md](PLAN.md)。
-
-**当前进度（2026-08-20）：** Controlled Agent **CLOSED**。同一 held-out 500 上 GRPO@400 vs SFT：Answer F1 **0.7506 vs 0.6064（ΔRL +0.1442）**，EM +0.138，Evidence F1 +0.2591；L3 adaptive second-hop `PARTIAL PASS`。**现在进入 Web zero-shot tool adapter；禁止重训、改 action 或重开 Formal-v1。**
-
-Web-v1 已冻结为同一 `<search> → <tool_response>` 协议，并提供 `none/research`
-成对消融。ResearchMemory 只使用本轮 Web 返回内容，保存带 URL 的 Evidence、搜索历史、
-去重状态和剩余预算；旧网页正文会压缩，搜索上限 5 仅是安全 cap。当前真实运行唯一外部
-门槛是可用的 Brave key 或 SearXNG endpoint。
-
-Web No-Memory smoke n=8 已完成（2026-08-20）：finish 1.0 / Answer F1 0.2292 /
-EM 0.125 / search 全部为 1 次，但公网抓取仍有 5.75 个 page error/episode、205s/item。
-该 n=8 结果只判协议与网络，不作为 L4 最终效果。
-
-该 ResearchMemory 臂随后被主动停止：当前判定为 `P0_WEB_INFRA_FAIL`，不是 policy
-失败。主线先做逐阶段 latency/error profiling，并以 Brave LLM Context 的预抽取正文
-替代服务器逐页抓取；通过同 query 的 n=3→20 纯 Tool A/B 后，才恢复 Agent 评测。
-
-Leak-filtered Tool A/B n=20 已 PASS：本地抓页均值/p95 29.16/51.09s、3.5 failed
-URLs/q、非空率 75%；Brave LLM Context 均值/p95 0.51/0.64s、零错误、20/20
-非空。均值加速 57.5×，Web-v1 默认后端已冻结为 `brave_llm_context`。这仍是纯
-Tool 结论；下一关是冻结 GRPO@400 的 Agent n=8 protocol smoke。
-
-能力边界：
+从 Agentic SFT、GRPO、rollout correctness/acceleration 到真实 Web Evidence Agent
+的完整后训练项目。Qwen3-8B 学习统一的
+`<search> → <tool_response> → <evidence> → <answer>` 协议，最终以 CLI 和 FastAPI
+交付 `Question → Web Search → Evidence → Answer → Sources`。
 
 ```text
-L1 Tool execution               PASS
-L2 Evidence-grounded answering  PASS
-L3 Adaptive second-hop          PARTIAL PASS
-L4 Real-Web research            NOT RUN
+Question → frozen GRPO@400 → <search> → Bocha Web Search
+         → Evidence selection → grounded Answer + Sources
 ```
 
-Held-out 500 closure:
+**最终状态（2026-08-21）：FROZEN。** 生产路径只使用 GRPO@400、Bocha 和
+provenance state。ResearchMemory 不注入 policy prompt；W3–W7 Controller 研究完整
+保留，但因 frozen natural-state gate 失败而默认禁用。
+
+## 核心结果
 
 | Arm | Answer F1 | EM | Evidence F1 | Search | Finish |
 |---|---:|---:|---:|---:|---:|
@@ -41,6 +24,38 @@ Held-out 500 closure:
 | **GRPO@400** | **0.7506** | **0.6700** | **0.7243** | 1.108 | **1.000** |
 
 同后端、同 corrected Harness：`ΔRL,heldout F1 = +0.1442`。Controlled 到此关闭。
+
+SFT → GRPO@400：Answer F1 **+14.42pp**、EM **+13.8pp**、Evidence F1
+**+25.91pp**。Exact VeXact 是 correctness anchor；正式 rollout 使用 SGLang +
+Decoupled Token-TIS，generation 约加速 **33.6×**、完整 step 约加速 **9.3×**。
+
+## 运行
+
+不需要模型、GPU、网络或 Key 的面试演示：
+
+```bash
+python3 cli.py --mock
+bash scripts/smoke_final.sh
+```
+
+真实 Web：
+
+```bash
+export BOCHA_API_KEY='your-key'
+bash scripts/start_final_stack.sh
+# 另一个终端
+python3 cli.py
+```
+
+API 文档为 `http://127.0.0.1:8010/docs`。参见
+[部署与使用](docs/DEPLOYMENT.md)、[架构](docs/ARCHITECTURE.md)、
+[冻结指标](docs/FINAL_METRICS.md) 和 [Controller 研究结论](docs/RESEARCH_BRANCH.md)。
+
+## 为什么 Adaptive Controller 默认关闭？
+
+我们在同一个 frozen natural-state protocol 下评估了生成式、判别式、偏好对齐和
+structured-gap Controller。最佳 balanced accuracy 为 0.7754，未过预注册 0.80
+门槛；最终一次 W7 退化至 0.6231。因此项目保留完整负结果，但不发布未验证组件。
 
 ## 项目目标
 

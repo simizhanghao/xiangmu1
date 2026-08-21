@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evidence-aware-deepresearch"
+version = "1.0.0"
+description = "Frozen Qwen3-8B GRPO Web research agent with evidence provenance"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "pydantic>=2,<3",
+  "requests>=2.32,<3",
+  "transformers>=5.6,<6",
+  "uvicorn>=0.30,<1",
+]
+
+[project.scripts]
+dee-research = "cli:main"
+
+[tool.setuptools]
+py-modules = ["cli"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]

@@ -1,0 +1,13 @@
+{
+  "backbone": "Qwen3-8B",
+  "final_policy": "GRPO global_step_400",
+  "precision": "bfloat16",
+  "local_model_path": "results/44_hf_formal_grpo_step400/model_view",
+  "action_protocol": ["<internal>", "<search>", "<evidence>", "<answer>"],
+  "model_config_sha256": "f7c4eadfbbf522470667b797a3c89be2524832d2d599797248dc304fff447c30",
+  "tokenizer_config_sha256": "d5d09f07b48c3086c508b30d1c9114bd1189145b74e982a265350c923acd8101",
+  "harness_config_sha256": "6827664665cf32b917353ecab7ca9d465a35ba4c04e3d2b3a73e45ebe6060442",
+  "weights_in_git": false,
+  "adaptive_controller_enabled": false,
+  "policy_prompt_memory": false
+}

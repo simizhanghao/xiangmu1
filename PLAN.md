@@ -1196,6 +1196,123 @@ accuracy=0.7883 and zero thresholds meeting 80/80. Per the precommitted terminal
 stop all model training; do not connect live Web or run final50. See
 `docs/W5_MODULAR_CONTROLLER_REPORT.md`.
 
+### W5.5 — Final frozen-backbone linear probe
+
+**LOCKED exception authorized 2026-08-21:** W5.5 supersedes the W5 terminal rule only
+for one discriminative linear probe. It does not reopen data collection, Teacher/API
+calls, backbone/LoRA training, MLPs, hyperparameter sweeps, or dev-threshold tuning.
+Freeze the trained Qwen3-1.7B + W5 LoRA, reuse only 4,998 natural states, append the exact
+`DECISION:` prefix, and extract the final-layer hidden state at the last valid token.
+Extraction uses right padding so `attention_mask.sum(dim=1)-1` is the correct index.
+
+Deterministically split the original 4,498 natural train states into 4,098 probe-train
+and 400 calibration states, stratified by STOP/CONTINUE. Keep the frozen natural-dev500
+untouched. Train exactly `Linear(hidden_size, 2)` with class-weighted cross entropy and
+one fixed optimizer configuration. Calibration selects one threshold maximizing
+`min(STOP recall, CONTINUE recall)`; dev500 is evaluated once.
+
+Gate remains unchanged: AUROC>=0.90, STOP recall>=0.80, CONTINUE recall>=0.80,
+balanced accuracy>=0.80, parse-valid=100%. PASS permits cached integration before at
+most one n=10–20 live smoke. FAIL permanently closes model training: no MLP, second
+classifier, new labels/data, DPO, RL, or threshold rescue.
+
+**CLOSED — W5.5 LINEAR PROBE FAIL (2026-08-21):** hidden extraction passed on all
+4,998 natural states (`hidden_dim=2048`); 471/4,998 prompts (9.42%) used the frozen
+source-prefix-plus-decision-prefix truncation policy. The single weighted linear head
+fit probe-train (`final weighted train loss=0.1550`) and calibration reached STOP/CONTINUE
+recall 0.8136/0.8094 at threshold 0.8431. The one permitted frozen-dev500 evaluation
+gave AUROC=0.8505, STOP recall=0.7746, CONTINUE recall=0.7762, balanced accuracy=0.7754,
+parse-valid=1.0: all scientific Gate criteria except parsing failed. This is a terminal
+negative result. Do not integrate the head, rerun dev, change pooling/truncation,
+train an MLP, recollect labels, or resume Controller training. The post-save launcher
+`NameError` was bookkeeping-only and did not invalidate saved artifacts or metrics.
+
+The W5-B/W5-C text below is the original precommit retained for audit history; it is
+superseded by the two terminal failures above and is not an active execution plan.
+
+### W6 — Three-stage single-objective Controller SFT
+
+**LOCKED user-authorized route change (2026-08-21):** W6 supersedes the W5/W5.5
+training terminal only for this precommitted curriculum. It does not reopen data/API
+collection, model/rank sweeps, DPO, RL, or repeated frozen-dev tuning. Existing grounded
+labels and Query Teacher outputs are frozen; W6 makes zero Bocha/DeepSeek calls.
+
+**Stage 1 — decision only:** initialize from Qwen3-1.7B, train one fixed LoRA
+(`r=32`, `alpha=64`, seven projection targets, `lr=1e-5`) on natural on-policy states.
+The 662 train-natural STOP states are each exposed three times and paired with three
+disjoint deterministic 662-state CONTINUE subsets (3,972 rows total). This is one
+expanded physical epoch implementing three balanced curriculum rounds without using
+dev or masked siblings. Target is exactly `DECISION: STOP` or `DECISION: CONTINUE`.
+Evaluate frozen natural-dev500 once. Hard Gate: STOP recall>=0.80, CONTINUE recall>=0.80,
+balanced accuracy>=0.80; report AUROC and parse-valid diagnostically. Stage-1 FAIL ends
+W6 immediately—no Stage 2, DPO, alternate rank, threshold rescue, or dev rerun.
+Every W6 training stage must write TensorBoard train curves. Training-time evaluation
+curves may use a separate non-gating validation split, never the one-shot frozen dev500;
+the frozen dev remains a terminal Gate and is not monitored during optimization.
+
+**CLOSED — W6 STAGE-1 DECISION GATE FAIL (2026-08-21):** training completed 249
+optimizer steps in 7m11s with TensorBoard artifacts and no API calls. The one permitted
+frozen natural-dev500 evaluation produced STOP recall=0.6901, CONTINUE recall=0.8042,
+balanced accuracy=0.7472, diagnostic AUROC=0.8333, and parse-valid=1.0. Relative to W5,
+only formatting and CONTINUE recall improved; STOP recall, balanced accuracy, and AUROC
+declined. Per the precommit, do not run Stage 2/3, DPO, alternate ranks, threshold rescue,
+or another dev evaluation. W6 and the modular Controller training route are closed.
+
+**Stage 2 — query only after Stage-1 PASS:** initialize from Stage 1 and reuse the
+existing valid CONTINUE Query Teacher data for one epoch. Target is CONTINUE + MISSING +
+QUERY; no STOP rows and no API calls.
+
+**Stage 3 — joint rehearsal only after Stage-2 completion:** balanced 50% STOP and 50%
+CONTINUE+Query, one fixed lower learning rate (`3e-6` to `5e-6`, choose once before
+launch), at most one epoch. Final frozen natural-dev500 Gate: both decision recalls and
+balanced accuracy >=0.80, duplicate query<=0.10, state-conditioned query>=0.70,
+parse-valid>=0.95. Only PASS permits cached integration followed by one live Bocha
+n=10–20 smoke. DPO remains closed unless Stage 3 already passes and a separate route is
+explicitly authorized.
+
+### W7 — Final structured sufficiency-and-gap judge
+
+**FINAL user-authorized exception (2026-08-21):** W7 supersedes the W6 terminal only
+for one S2G-style structural test. No model-size/rank/LR sweep, new Web collection,
+Teacher relabeling, DPO, RL, or repeated dev evaluation is allowed. W7 uses Qwen3-1.7B,
+one fixed LoRA (`r=32`, `alpha=64`, `lr=1e-5`) and zero API calls.
+
+Locally compress each natural state into `Question + Evidence Context`: split only the
+observed Web text into sentences, score sentences deterministically against the question
+with a BM25-style lexical scorer, retain at most eight sentences and at most two per
+source, and preserve source IDs. The compressor must not read gold answers, grounded
+decisions, Teacher Missing labels, or dev outcomes. The Judge target contains no Query:
+STOP=`SUFFICIENT: YES / GAPS: NONE`; CONTINUE=`SUFFICIENT: NO / GAPS: <existing frozen
+Teacher Missing>`. Training has two balanced logical rounds: all 662 train-natural STOP
+states twice plus 1,324 distinct train-natural CONTINUE states, one expanded physical
+epoch (2,648 rows). Masked siblings and frozen dev are excluded.
+
+Run frozen natural-dev500 exactly once. Static hard Gate is unchanged: STOP recall>=0.80,
+CONTINUE recall>=0.80, balanced accuracy>=0.80; AUROC, parse-valid and gap validity are
+reported diagnostics. FAIL permanently closes adaptive Controller work. PASS alone
+permits one cached sequential integration, followed—only after explicit notice about API
+cost—by at most one live Bocha n=10–20 smoke. W7 is the final Controller experiment
+regardless of outcome.
+
+**CLOSED — W7 STATIC GATE FAIL / CONTROLLER LINE FROZEN (2026-08-21):** W7 produced
+AUROC=0.7120, STOP recall=0.5352, CONTINUE recall=0.7110, balanced accuracy=0.6231,
+parse-valid=1.0, structured-gap-valid=0.986, gap-target word recall=0.5337, and zero
+truncation/API calls. It learned structured output but not semantic evidence coverage.
+W3–W7 are permanently closed: no larger Controller, DPO/RL, new labels/provider/data,
+extra epochs, MLP, or compression v2.
+
+### Final release
+
+The deployment is frozen as **GRPO@400 + Bocha Web Search + provenance state + grounded
+Evidence/Answer/Sources**. ResearchMemory prompt injection is disabled because the frozen
+W2 comparison reduced Answer F1/finish; application state records sources and queries
+without changing the validated policy prompt. It is named an **Evidence-Aware Web Search Agent**, not a
+fully adaptive DeepResearch system. The learned adaptive Controller is disabled. Final
+deliverables are the interactive `cli.py`, FastAPI `POST /v1/research`, health and frozen
+metrics endpoints, `docs/FINAL_METRICS.md`, and `results/final_release/metrics.json`.
+Serving changes may improve packaging/reliability only; they must not change policy,
+Harness, model, search protocol, or scientific metrics.
+
 **W5-B Controller:** Qwen3-1.7B-Instruct, loss=`L_decision + L_query` with lambda=1,
 global batch about 16, one fixed configuration, 1–2 epochs (roughly 300–600 optimizer
 updates). This is the only remaining training route; do not train before W5-A data and

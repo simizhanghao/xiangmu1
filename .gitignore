@@ -16,3 +16,6 @@ outputs/
 *.bin
 *.pt
 *.gguf
+build/
+dist/
+*.egg-info/

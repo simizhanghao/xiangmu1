@@ -1,0 +1,13 @@
+{
+  "seed": 42,
+  "manifests_only": true,
+  "splits": {
+    "formal_train": "data/rl/formal_5k/train.parquet",
+    "frozen_dev_200": "data/eval/hotpotqa_200.jsonl",
+    "formal_dev_1000": "data/eval/hotpotqa_formal_dev_1000.jsonl",
+    "sealed_heldout_500": "data/sealed/hotpotqa_test500.jsonl",
+    "web_dev_ids": "data/web_v2/web_dev50_ids.txt",
+    "web_final_ids": "data/web_v2/web_final50_ids.txt"
+  },
+  "note": "Large/raw datasets are intentionally excluded from Git; local paths are auditable in the frozen experiment tree."
+}

@@ -1,0 +1,28 @@
+name: Evidence-Aware DeepResearch Agent
+release: v1.0.0
+
+policy:
+  name: GRPO@400
+  backbone: Qwen3-8B
+  model_path: results/44_hf_formal_grpo_step400/model_view
+  action_protocol: [internal, search, evidence, answer]
+  temperature: 0.0
+
+retrieval:
+  provider: bocha
+  top_k: 5
+  max_search_turns: 5
+
+memory:
+  mode: provenance_only
+  inject_into_policy_prompt: false
+  note: Records queries, evidence and source URLs without changing the frozen policy input.
+
+adaptive_controller:
+  enabled: false
+  status: experimental_failed_frozen_gate
+
+serving:
+  api_host: 127.0.0.1
+  api_port: 8010
+  vllm_port: 18120

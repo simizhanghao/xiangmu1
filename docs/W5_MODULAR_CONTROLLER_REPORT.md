@@ -46,3 +46,26 @@ retrieval, but the final modular adaptive-depth deployment claim is not met. W5 
 the remaining failure to grounded sufficiency/stopping discrimination rather than query
 reformulation. This negative result is retained; further tuning would violate the frozen
 terminal rule and weaken the causal story.
+
+## W5.5 authorized frozen-backbone probe
+
+The sole precommitted exception to the W5 terminal rule was completed. The frozen
+Qwen3-1.7B + W5 LoRA produced 4,998 final-layer vectors (`hidden_dim=2048`); 471
+prompts (9.42%) required the fixed source-prefix-plus-`DECISION:` truncation rule.
+No backbone parameter was updated and no Web or Teacher API was called.
+
+| Metric | Calibration / train | Frozen dev500 | Required |
+|---|---:|---:|---:|
+| Weighted train loss | 0.1550 | — | diagnostic |
+| AUROC | — | 0.8505 | >=0.90 |
+| STOP recall | 0.8136 | 0.7746 | >=0.80 |
+| CONTINUE recall | 0.8094 | 0.7762 | >=0.80 |
+| Balanced accuracy | — | 0.7754 | >=0.80 |
+| Parse-valid | — | 1.0000 | 1.00 |
+
+The original logged `train_loss=0.8947` was LBFGS's returned pre-optimization closure
+value; read-only recomputation from the saved head gives the final 0.1550 value above.
+Thus the failure is not lack of train-set fit or output parsing. The frozen representation
+does not provide a sufficiently generalizable linear STOP/CONTINUE boundary. W5.5 is
+therefore terminally closed: no integration, MLP, pooling/truncation ablation, new data,
+threshold rescue, DPO, RL, or repeated dev evaluation.
